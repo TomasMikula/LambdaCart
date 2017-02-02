@@ -13,7 +13,7 @@ Now, it would be very convenient if we could combine them just like we combine o
 x => { /* body, optionally referring to x */ }
 ```
 
-That is, name a placeholder for input and use it in the definition of the output.
+That is, name a placeholder for input and use it in the definition of the output. (If you are happy with writing your DSL programs in point-free style, you can stop reading.)
 
 DSLs often support this by just embedding ordinary Scala functions (e.g. Free monad-based DSLs). However, you **cannot analyze a function**, or store it in a database (or at least you shouldn't).
 
@@ -24,7 +24,7 @@ This project introduces a technique to give lambda syntax to DSLs, without embed
 
 Scala's lambda syntax only produces Scala functions. We can't have
 
-```
+```scala
 (a: A) => { /* body */ }
 ```
 
@@ -32,19 +32,19 @@ produce a value of type `Prg[A, B]`; it produces a function, i.e. a value of typ
 
 The idea is to define a slightly different function:
 
-```
+```scala
 (a: τ[A]) => { /* body */ }
 ```
 
-of type `τ[A] => τ[B]`. Type `τ` (the Greek letter "tau") is defined in this library and stands for "term". Now, inside the body, the variable `a` doesn't have type `A`, but the goal is to provide enough syntactic convenience (via implicit conversions) so that `f: Prg[A, B]` can be used as `A => B` and `a: τ[A]` can be used as `A`, so e.g. `f(a)` would compile as an expression of type `τ[B]`, with value `App(f, a)`. It really just captures the abstract syntax tree of "function" applications (except the function now has type `Prg[A, B]`s).
+of type `τ[A] => τ[B]`. Type `τ` (the Greek letter "tau") is defined in this library and stands for "term". Now, inside the body, the variable `a` doesn't have type `A`, but the goal is to provide enough syntactic convenience (via implicit conversions) so that e.g. `f: Prg[A, B]` can be used as `A => B` and `a: τ[A]` can be used as `A`, i.e. `f(a)` would compile as an expression of type `τ[B]`, with value `App(f, a)`. It really just captures the abstract syntax tree of "function" applications (except the functions are now of type `Prg[_, _]`).
 
-Once we have a function `τ[A] => τ[B]`, we can apply it to a fresh variable `x` (of type `Var[A] extends τ[A]`) and obtain a term (`b: τ[B]`) representing (abstract syntax of) the body of the function. `x` now appears as a free variable in `b`. From `x` and `b` we form
+Once we have a function `τ[A] => τ[B]`, we can apply it to a fresh variable `x` (of type `Var[A] extends τ[A]`) and obtain a term `b: τ[B]` representing (abstract syntax of) the body of the function. `x` now appears as a free variable in `b`. From `x` and `b` we form
 
 ```scala
 Abs(x, b): τ[Prg[A, B]]
 ```
 
-i.e. a term representing lambda abstraction. Altogether, `τ` contains these nodes:
+i.e. a term representing lambda abstraction. Altogether, the `τ` tree contains these nodes:
 
 ```scala
      class Var[X] extends τ[X]
@@ -55,7 +55,7 @@ case class Arr[X, Y](f: Prg[X, Y]) extends τ[Prg[X, Y]]
 
 The first three are terms of lambda calculus, the last one is to embed existing programs (`Arr` stands for "arrow").
 
-The remaining question is how to convert `τ[Prg[A, B]]` to `Prg[A, B]`. For that, we will require some operations on `Prg`. One minimal set of operations is that of a _Cartesian closed category_, and we will go with it:
+The remaining question is how to convert `τ[Prg[A, B]]` to `Prg[A, B]`, i.e. how to eliminate all the lambda abstractions and applications (variable reference will go away automatically with abstraction elimination when converting a _closed_ term (i.e. a term without free variables)). For the conversion, we will require some operations on `Prg`. One minimal set of operations is that of a _Cartesian closed category_, and we will go with it:
 
 ```scala
 /** Cartesian closed category. */
@@ -109,7 +109,7 @@ trait MyDsl {
   def maybe[A, B]: Maybe[A] :=>: (Unit :=>: B) :=>: (A :=>: B) :=>: B =
     either[Unit, A, B]
 
-  /** "pattern matchinch" on A**B */
+  /** "pattern matching" on A**B */
   def both[A, B, C](ab: τ[A**B])(f: τ[A] => τ[B] => τ[C]): τ[C]
 
 
@@ -193,7 +193,7 @@ The function `dsl` has signature
 def dsl[A, B](f: τ[A] => τ[B]): A :=>: B
 ```
 
-and performs the translation from lambda terms to arrows of a Cartesian closed category.
+and performs the translation from lambda terms to arrows of a Cartesian closed category. The translation assumes that it is passed a closed term and any occurrence of function application (`App` node) is inside a lambda abstraction (`Abs` node).
 
 The methods `**`, `_1`, `_2` are overridden syntax for product formation and deconstruction.
 
@@ -217,7 +217,7 @@ Simply typed lambda expressions (anonymous functions) don't give any means for e
 
 ### Custom data types and pattern matching
 
-Our DSL gave us some primitive types and type constructors to define new ones. We cannot, however, use Scala's case class syntax to define data types and then use Scala's pattern matching syntax to define arrows that work on those data types.
+Our DSL gave us some primitive types and type constructors to define new ones. We cannot, however, use Scala's case class syntax to define data types of our DSL and then use Scala's pattern matching syntax to define arrows that work on those data types.
 
 Above, we have seen special arrows like `both`, `either`, `maybe` that simulate pattern matching on `**`, `\/`, `Maybe`, respectively.
 
@@ -226,8 +226,8 @@ Above, we have seen special arrows like `both`, `either`, `maybe` that simulate 
 
 ### Term size reduction
 
-The currently implemented translation from lambda terms to CCC terms produces terms of enormous size even for small lambda expressions. As such, it serves as a proof of concept, but is not of practical use. Although it is expected that the translation can increase the size of terms exponentially, I'm pretty sure the current implementation can be improved significantly. The laws of Cartesian closed categories can serve as a basis for reducing the terms. (The only thing that deters me from doing it is pretty bad support for pattern matching on GADTs in Scala.)
+The currently implemented translation from lambda terms to CCC arrows produces arrows of enormous size even for small lambda expressions. As such, it serves as a proof of concept, but is not of practical use. Although it is expected that the translation can increase the size of terms exponentially, I'm pretty sure the current implementation can be improved significantly. The laws of Cartesian closed categories can serve as a basis for reducing the terms. (The only thing that deters me from doing it is pretty bad support for pattern matching on GADTs in Scala.)
 
 ### Linear types
 
-An interesting area to investigate would be whether we could extend this to support "linear" arrows. My high-level idea is to annotate input and output types of an arrow, and elements of a pair, with _arities_, where arity of an input says how many times the arrow consumes the input, arity of an output says how many times the result can be consumed. Arity would be one of _ι_, _ω_, with _ι_ meaning exactly once and _ω_ meaning any number of times (including 0). We would then modify the syntax rules so that a variable annotated with _ι_ could only be passed to an arrow whose input is also annotated with _ι_, etc. So we could possibly ensure that a linear variable is only passed to an arrow that respects its linearity. However, we also have to ensure that a linear variable is passed to such an arrow at most once. Perhaps it is possible to write a macro that would check this.
+An interesting area to investigate would be whether we could extend this to support "linear" arrows. My high-level idea is to annotate input and output types of an arrow, and elements of a pair, with _arities_, where arity of an input says how many times the arrow consumes the input, arity of an output says how many times the result can be consumed. Arity would be one of _ι_, _ω_, with _ι_ meaning exactly once and _ω_ meaning any number of times (including 0). We would modify the arrow combinators (and syntax via implicit conversions) so that they respect the arity annotations. So we could possibly ensure that a linear variable is only passed to an arrow that respects its linearity. However, we also have to ensure that a linear variable is passed to such an arrow at most once. Perhaps it is possible to write a macro that would check this.
