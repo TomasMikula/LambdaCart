@@ -4,10 +4,10 @@ version := "0.1-SNAPSHOT"
 
 organization := "com.github.tomasmikula"
 
-scalaVersion := "2.12.1"
+scalaVersion := "2.12.3"
 
 autoCompilerPlugins := true
-addCompilerPlugin("org.spire-math" % "kind-projector" % "0.9.3" cross CrossVersion.binary)
+addCompilerPlugin("org.spire-math" % "kind-projector" % "0.9.4" cross CrossVersion.binary)
 
 scalacOptions ++= Seq(
   "-language:higherKinds",
@@ -25,7 +25,7 @@ scalacOptions ++= Seq(
   "-Xfuture")
 
 libraryDependencies ++= Seq(
-  "org.scalaz" %% "scalaz-core" % "7.3.0-M8"
+  "org.scalaz" %% "scalaz-core" % "7.3.0-M14"
 )
 
 fork := true
