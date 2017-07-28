@@ -27,6 +27,22 @@ sealed trait Term[:=>:[_, _], **[_, _], T, A] {
   protected def compile(implicit CC: CCC.Aux[:=>:, **, T]): A
 
   def visit[Z](visitor: TermVisitor[:=>:, **, T, A, Z]): Z
+
+  def size: Int = this.visit(new TermVisitor[:=>:, **, T, A, Int] { self =>
+    def accept(a: Var[:=>:,**,T,A]): Int = 1
+    def accept[X](a: App[:=>:,**,T,X,A]): Int = 1 + a.f.size + a.a.size
+    def accept[X, Y](a: Abs[:=>:,**,T,X,Y])(implicit ev: (X :=>: Y) === A): Int = 1 + a.b.size
+    def accept(a: Obj[:=>:,**,T,A]): Int = 1
+    def accept[X, Y, Z](a: Uncurry[:=>:,**,T,X,Y,Z])(implicit ev: ===[:=>:[**[X,Y],Z],A]): Int = 1 + a.f.size
+    def accept[X, Y, Z](a: Curry[:=>:,**,T,X,Y,Z])(implicit ev: ===[:=>:[X,:=>:[Y,Z]],A]): Int = 1 + a.f.size
+    def accept[X](a: Terminal[:=>:,**,T,X])(implicit ev: ===[:=>:[X,T],A]): Int = 1
+    def accept[X, Y, Z](a: Prod[:=>:,**,T,X,Y,Z])(implicit ev: ===[:=>:[X,**[Y,Z]],A]): Int = 1 + a.f.size + a.g.size
+    def accept[X, Y](a: Snd[:=>:,**,T,X,Y])(implicit ev: ===[:=>:[**[X,Y],Y],A]): Int = 1
+    def accept[X, Y](a: Fst[:=>:,**,T,X,Y])(implicit ev: ===[:=>:[**[X,Y],X],A]): Int = 1
+    def accept[X, Y, Z](a: Compose[:=>:,**,T,X,Y,Z])(implicit ev: ===[:=>:[X,Z],A]): Int = 1 + a.f.size + a.g.size
+    def accept[X](a: Id[:=>:,**,T,X])(implicit ev: ===[:=>:[X,X],A]): Int = 1
+    def accept[X, Y](a: Arr[:=>:,**,T,X,Y])(implicit ev: ===[:=>:[X,Y],A]): Int = 1
+  })
 }
 object Term {
 
