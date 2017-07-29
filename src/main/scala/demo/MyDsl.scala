@@ -62,10 +62,6 @@ object MyDsl {
   **/
 private[demo] object MyDslImpl extends MyDsl {
 
-  sealed trait Digit
-  case object O extends Digit
-  case object I extends Digit
-
   type Nat = Int
   type :=>:[A, B] = List[Inst]
   type **[A, B] = (A, B)
