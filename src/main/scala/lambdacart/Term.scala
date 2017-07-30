@@ -10,6 +10,8 @@ import scalaz.Leibniz.===
 sealed trait Term[:=>:[_, _], **[_, _], T, A] {
   import Term._
 
+  type τ[X] = Term[:=>:, **, T, X]
+
   // Note: Methods implemented separately in each case class due to
   // major suckiness of pattern matching on GADTs.
 
@@ -43,7 +45,22 @@ sealed trait Term[:=>:[_, _], **[_, _], T, A] {
     def accept[X](a: Id[:=>:,**,T,X])(implicit ev: ===[:=>:[X,X],A]): Int = 1
     def accept[X, Y](a: Arr[:=>:,**,T,X,Y])(implicit ev: ===[:=>:[X,Y],A]): Int = 1
   })
+
+
+  /* Syntax */
+
+  // Not a usual map signagure. This is to abuse Scala's `for` syntax.
+  def map[B](f: τ[A] => τ[B]): τ[B] =
+    f(this)
+
+  // Not a usual flatMap signagure. This is to abuse Scala's `for` syntax.
+  def flatMap[B](f: τ[A] => τ[B]): τ[B] =
+    f(this)
+
+  def **[B](b: τ[B]): τ[A**B] = pair(this, b)
+
 }
+
 object Term {
 
   // wrap primitive arrow
@@ -265,6 +282,12 @@ object Term {
 //
 //    t1.compile
 //  }
+
+  def internalize[:=>:[_, _], **[_, _], T, A, B](f: Term[:=>:, **, T, A] => Term[:=>:, **, T, B]): Term[:=>:, **, T, A :=>: B] = {
+    val v = Term.freshVar[:=>:, **, T, A]
+    Term.abs(v, f(v))
+  }
+
 }
 
 trait TermVisitor[:=>:[_, _], **[_, _], T, A, R] {
