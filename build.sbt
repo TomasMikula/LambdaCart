@@ -25,7 +25,9 @@ scalacOptions ++= Seq(
   "-Xfuture")
 
 libraryDependencies ++= Seq(
-  "org.scalaz" %% "scalaz-core" % "7.3.0-M14"
+  "org.scalaz" %% "scalaz-core" % "7.3.0-M14",
+
+  "org.scalatest" %% "scalatest" % "3.0.1" % "test"
 )
 
 fork := true

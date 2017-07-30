@@ -51,6 +51,9 @@ trait MyDsl extends ExtendedDsl { dsl =>
   def exec[A, B, C](a: Native[A], b: Native[B])(f: A :=>: B :=>: C): Native[C]
   def encodeInt(i: Int): Native[Nat]
   def decodeInt(n: Native[Nat]): Int
+
+  // For testing purposes
+  def sizeOf[A, B](f: A :=>: B): Int
 }
 
 object MyDsl {
@@ -90,6 +93,18 @@ private[demo] object MyDslImpl extends MyDsl {
   }
 
   def decodeInt(n: Native[Nat]): Int = n
+
+  def sizeOf[A, B](f: A :=>: B): Int = f match {
+    case i :: is => sizeOf(i) + sizeOf(is)
+    case Nil     => 0
+  }
+
+  private def sizeOf(i: Inst): Int = i match {
+    case Iter(f)        => 1 + sizeOf(f)
+    case Curried(f)     => 1 + sizeOf(f)
+    case Papplied(f, a) => 1 + sizeOf(f) + 1 // XXX: should implement sizeOf(a)
+    case _              => 1
+  }
 
   sealed abstract class Inst
   case object Dup extends Inst      // duplicate the top of the stack
