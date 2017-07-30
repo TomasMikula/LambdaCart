@@ -1,7 +1,8 @@
 package demo
 
 object Main extends App {
-  import MyDsl.instance._
+  val dsl = MyDsl.instance
+  import dsl._
 
   val fac: Nat :=>: Nat = dsl { n =>
     forLoop(n)(one ** one)( both(_) { acc => i =>

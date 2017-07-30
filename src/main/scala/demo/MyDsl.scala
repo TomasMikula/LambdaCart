@@ -6,7 +6,7 @@ import lambdacart._
 /**** Interface of our DSL.
   ** This is what users will program against.
   **/
-trait MyDsl extends ExtendedDsl {
+trait MyDsl extends ExtendedDsl { dsl =>
   // For users, Nat is an abstract type.
   // They don't get to see its representation.
   type Nat

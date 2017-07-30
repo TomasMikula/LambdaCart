@@ -55,7 +55,7 @@ trait Dsl {
 
   implicit def CC: CCC.Aux[:=>:, **, Unit]
 
-  def dsl[A, B](f: τ[A] => τ[B]): A :=>: B = compile(τ(f).purify)
+  def apply[A, B](f: τ[A] => τ[B]): A :=>: B = compile(τ(f).purify)
 
 
   implicit class ArrowSyntax[A, B](f: A :=>: B) {
