@@ -12,6 +12,8 @@ sealed trait Term[:=>:[_, _], **[_, _], T, A] {
 
   type τ[X] = Term[:=>:, **, T, X]
 
+  private type Transformer = TermVisitor[:=>:, **, T, A, Term[:=>:, **, T, A]]
+
   // Note: Methods implemented separately in each case class due to
   // major suckiness of pattern matching on GADTs.
 
@@ -19,16 +21,15 @@ sealed trait Term[:=>:[_, _], **[_, _], T, A] {
     */
   protected def unapply[X](x: Var[:=>:, **, T, X]): Term[:=>:, **, T, X :=>: A]
 
-  /** Abstraction elimination. Returns an equivalent term that contains no lambda abstractions.
-    * When `this` is a closed term, the result also contains no variables.
-    */
-  def elimAbs: Term[:=>:, **, T, A]
-
   protected def containsVarOrApp[X](v: Var[:=>:, **, T, X]): Boolean
 
   def compile(implicit CC: CCC.Aux[:=>:, **, T]): A
 
   def visit[Z](visitor: TermVisitor[:=>:, **, T, A, Z]): Z
+
+  private def transform(tr: Transformer): Term[:=>:, **, T, A] = visit(tr)
+
+  private[Term] def coerce[B](implicit ev: A === B): τ[B] = ev.subst[τ](this)
 
   def size: Int = this.visit(new TermVisitor[:=>:, **, T, A, Int] { self =>
     def accept(a: Var[:=>:,**,T,A]): Int = 1
@@ -44,6 +45,40 @@ sealed trait Term[:=>:[_, _], **[_, _], T, A] {
     def accept[X, Y, Z](a: Compose[:=>:,**,T,X,Y,Z])(implicit ev: ===[:=>:[X,Z],A]): Int = 1 + a.f.size + a.g.size
     def accept[X](a: Id[:=>:,**,T,X])(implicit ev: ===[:=>:[X,X],A]): Int = 1
     def accept[X, Y](a: Arr[:=>:,**,T,X,Y])(implicit ev: ===[:=>:[X,Y],A]): Int = 1
+  })
+
+  /** Abstraction elimination. Returns an equivalent term that contains no lambda abstractions.
+    * When `this` is a closed term, the result also contains no variables.
+    */
+  final def elimAbs: Term[:=>:, **, T, A] = transform(new Transformer {
+
+    def accept[X, Y](a:      Arr[:=>:,**,T,X,Y])(implicit ev: (X :=>: Y)      === A) = a.coerce
+    def accept[X]   (a:       Id[:=>:,**,T,X])  (implicit ev: (X :=>: X)      === A) = a.coerce
+    def accept[X, Y](a:      Snd[:=>:,**,T,X,Y])(implicit ev: ((X**Y) :=>: Y) === A) = a.coerce
+    def accept[X, Y](a:      Fst[:=>:,**,T,X,Y])(implicit ev: ((X**Y) :=>: X) === A) = a.coerce
+    def accept[X   ](a: Terminal[:=>:,**,T,X])  (implicit ev: (X :=>: T)      === A) = a.coerce
+    def accept      (a:      Var[:=>:,**,T,A])                                       = a
+
+    def accept[X, Y, Z](a: Uncurry[:=>:,**,T,X,Y,Z])(implicit ev: :=>:[**[X,Y],Z] === A) =
+      Uncurry(a.f.elimAbs).coerce
+
+    def accept[X, Y, Z](a: Curry[:=>:,**,T,X,Y,Z])(implicit ev: :=>:[X,:=>:[Y,Z]] === A) =
+      Curry(a.f.elimAbs).coerce
+
+    def accept[X, Y, Z](a: Prod[:=>:,**,T,X,Y,Z])(implicit ev: :=>:[X,**[Y,Z]] === A) =
+      Prod(a.f.elimAbs, a.g.elimAbs).coerce
+
+    def accept[X, Y, Z](a: Compose[:=>:,**,T,X,Y,Z])(implicit ev: :=>:[X,Z] === A) =
+      Compose(a.f.elimAbs, a.g.elimAbs).coerce
+
+    def accept(a: Obj[:=>:,**,T,A]) =
+      Obj(a.f.elimAbs)
+
+    def accept[X](a: App[:=>:,**,T,X,A]) =
+      App(a.f.elimAbs, a.a.elimAbs)
+
+    def accept[X, Y](a: Abs[:=>:,**,T,X,Y])(implicit ev: (X :=>: Y) === A) =
+      a.b.elimAbs.unapply(a.a).coerce
   })
 
 
@@ -131,7 +166,6 @@ object Term {
   case class Arr[:=>:[_, _], **[_, _], T, A, B](f: A :=>: B) extends Term[:=>:, **, T, A :=>: B] {
     def visit[R](visitor: TermVisitor[:=>:, **, T, A :=>: B, R]): R = visitor.accept(this)
     protected def containsVarOrApp[X](v: Var[:=>:, **, T, X]): Boolean = false
-    def elimAbs: Term[:=>:, **, T, A :=>: B] = this
     protected def unapply[X](x: Var[:=>:, **, T, X]): Term[:=>:, **, T, X :=>: A :=>: B] =
       const(this)
     def compile(implicit CC: CCC.Aux[:=>:, **, T]): A :=>: B = f
@@ -140,7 +174,6 @@ object Term {
   case class Id[:=>:[_, _], **[_, _], T, A]() extends Term[:=>:, **, T, A :=>: A] {
     def visit[R](visitor: TermVisitor[:=>:, **, T, A :=>: A, R]): R = visitor.accept(this)
     protected def containsVarOrApp[X](v: Var[:=>:, **, T, X]): Boolean = false
-    def elimAbs = this
     protected def unapply[X](x: Var[:=>:, **, T, X]): Term[:=>:, **, T, X :=>: A :=>: A] =
       const(this)
     def compile(implicit CC: CCC.Aux[:=>:, **, T]): A :=>: A = CC.id[A]
@@ -149,7 +182,6 @@ object Term {
   case class Compose[:=>:[_, _], **[_, _], T, A, B, C](f: Term[:=>:, **, T, B :=>: C], g: Term[:=>:, **, T, A :=>: B]) extends Term[:=>:, **, T, A :=>: C] {
     def visit[R](visitor: TermVisitor[:=>:, **, T, A :=>: C, R]): R = visitor.accept(this)
     protected def containsVarOrApp[X](v: Var[:=>:, **, T, X]): Boolean = f.containsVarOrApp(v) || g.containsVarOrApp(v)
-    def elimAbs = Compose(f.elimAbs, g.elimAbs)
     protected def unapply[X](x: Var[:=>:, **, T, X]): Term[:=>:, **, T, X :=>: A :=>: C] =
       if(containsVarOrApp(x))
         andThen(prod(f.unapply(x), g.unapply(x)), composeA[:=>:, **, T, A, B, C])
@@ -162,7 +194,6 @@ object Term {
   case class Fst[:=>:[_, _], **[_, _], T, A, B]() extends Term[:=>:, **, T, (A**B) :=>: A] {
     def visit[R](visitor: TermVisitor[:=>:, **, T, (A**B) :=>: A, R]): R = visitor.accept(this)
     protected def containsVarOrApp[X](v: Var[:=>:, **, T, X]): Boolean = false
-    def elimAbs = this
     protected def unapply[X](x: Var[:=>:, **, T, X]): Term[:=>:, **, T, X :=>: (A**B) :=>: A] =
       const(this)
     def compile(implicit CC: CCC.Aux[:=>:, **, T]): (A**B) :=>: A =
@@ -172,7 +203,6 @@ object Term {
   case class Snd[:=>:[_, _], **[_, _], T, A, B]() extends Term[:=>:, **, T, (A**B) :=>: B] {
     def visit[R](visitor: TermVisitor[:=>:, **, T, (A**B) :=>: B, R]): R = visitor.accept(this)
     protected def containsVarOrApp[X](v: Var[:=>:, **, T, X]): Boolean = false
-    def elimAbs = this
     protected def unapply[X](x: Var[:=>:, **, T, X]): Term[:=>:, **, T, X :=>: (A**B) :=>: B] =
       const(this)
     def compile(implicit CC: CCC.Aux[:=>:, **, T]): (A**B) :=>: B =
@@ -182,7 +212,6 @@ object Term {
   case class Prod[:=>:[_, _], **[_, _], T, A, B, C](f: Term[:=>:, **, T, A :=>: B], g: Term[:=>:, **, T, A :=>: C]) extends Term[:=>:, **, T, A :=>: (B**C)] {
     def visit[R](visitor: TermVisitor[:=>:, **, T, A :=>: (B**C), R]): R = visitor.accept(this)
     protected def containsVarOrApp[X](v: Var[:=>:, **, T, X]): Boolean = f.containsVarOrApp(v) || g.containsVarOrApp(v)
-    def elimAbs = Prod(f.elimAbs, g.elimAbs)
     protected def unapply[X](x: Var[:=>:, **, T, X]): Term[:=>: , **, T, X :=>: A :=>: (B**C)] =
       if(containsVarOrApp(x)) curry(prod(uncurry(f.unapply(x)), uncurry(g.unapply(x))))
       else const(this)
@@ -193,7 +222,6 @@ object Term {
   case class Terminal[:=>:[_, _], **[_, _], T, A]() extends Term[:=>:, **, T, A :=>: T] {
     def visit[R](visitor: TermVisitor[:=>:, **, T, A :=>: T, R]): R = visitor.accept(this)
     protected def containsVarOrApp[X](v: Var[:=>:, **, T, X]): Boolean = false
-    def elimAbs = this
     protected def unapply[X](x: Var[:=>:, **, T, X]): Term[:=>:, **, T, X :=>: A :=>: T] =
       const(this)
     def compile(implicit CC: CCC.Aux[:=>:, **, T]): A :=>: T =
@@ -203,7 +231,6 @@ object Term {
   case class Curry[:=>:[_, _], **[_, _], T, A, B, C](f: Term[:=>:, **, T, (A**B) :=>: C]) extends Term[:=>:, **, T, A :=>: B :=>: C] {
     def visit[R](visitor: TermVisitor[:=>:, **, T, A :=>: B :=>: C, R]): R = visitor.accept(this)
     protected def containsVarOrApp[X](v: Var[:=>:, **, T, X]): Boolean = f.containsVarOrApp(v)
-    def elimAbs = Curry(f.elimAbs)
     protected def unapply[X](x: Var[:=>:, **, T, X]): Term[:=>:, **, T, X :=>: A :=>: B :=>: C] =
       if(containsVarOrApp(x)) curry(curry(andThen(assocR[:=>:, **, T, X, A, B], uncurry(f.unapply(x)))))
       else const(this)
@@ -214,7 +241,6 @@ object Term {
   case class Uncurry[:=>:[_, _], **[_, _], T, A, B, C](f: Term[:=>:, **, T, A :=>: B :=>: C]) extends Term[:=>:, **, T, (A**B) :=>: C] {
     def visit[R](visitor: TermVisitor[:=>:, **, T, (A**B) :=>: C, R]): R = visitor.accept(this)
     protected def containsVarOrApp[X](v: Var[:=>:, **, T, X]): Boolean = f.containsVarOrApp(v)
-    def elimAbs = Uncurry(f.elimAbs)
     protected def unapply[X](x: Var[:=>:, **, T, X]): Term[:=>:, **, T, X :=>: (A**B) :=>: C] =
       if(containsVarOrApp(x)) curry(andThen(assocL[:=>:, **, T, X, A, B], uncurry(uncurry(f.unapply(x)))))
       else const(this)
@@ -225,7 +251,6 @@ object Term {
   case class Obj[:=>:[_, _], **[_, _], T, A](f: Term[:=>:, **, T, T :=>: A]) extends Term[:=>:, **, T, A] {
     def visit[R](visitor: TermVisitor[:=>:, **, T, A, R]): R = visitor.accept(this)
     protected def containsVarOrApp[X](v: Var[:=>:, **, T, X]): Boolean = f.containsVarOrApp(v)
-    def elimAbs = Obj(f.elimAbs)
     protected def unapply[X](x: Var[:=>:, **, T, X]): Term[:=>:, **, T, X :=>: A] =
       if(f.containsVarOrApp(x)) obj(swap(f.unapply(x)))
       else compose(f, terminal)
@@ -236,7 +261,6 @@ object Term {
   case class Abs[:=>:[_, _], **[_, _], T, A, B](a: Var[:=>:, **, T, A], b: Term[:=>:, **, T, B]) extends Term[:=>:, **, T, A :=>: B] {
     def visit[R](visitor: TermVisitor[:=>:, **, T, A :=>: B, R]): R = visitor.accept(this)
     protected def containsVarOrApp[X](v: Var[:=>:, **, T, X]): Boolean = a == v || b.containsVarOrApp(v)
-    def elimAbs = b.elimAbs.unapply(a)
     protected def unapply[X](x: Var[:=>:, **, T, X]): Term[:=>:, **, T, X :=>: A :=>: B] =
       sys.error("Abstraction should have been eliminated first.")
     def compile(implicit CC: CCC.Aux[:=>:, **, T]): A :=>: B =
@@ -246,7 +270,6 @@ object Term {
   case class App[:=>:[_, _], **[_, _], T, A, B](f: Term[:=>:, **, T, A :=>: B], a: Term[:=>:, **, T, A]) extends Term[:=>:, **, T, B] {
     def visit[R](visitor: TermVisitor[:=>:, **, T, B, R]): R = visitor.accept(this)
     protected def containsVarOrApp[X](v: Var[:=>:, **, T, X]): Boolean = true
-    def elimAbs = App(f.elimAbs, a.elimAbs)
     protected def unapply[X](x: Var[:=>:, **, T, X]): Term[:=>:, **, T, X :=>: B] =
       if(!f.containsVarOrApp(x)) andThen(a.unapply(x), f)
       else andThen(prod(f.unapply(x), a.unapply(x)), appA[:=>:, **, T, A, B])
@@ -257,7 +280,6 @@ object Term {
   class Var[:=>:[_, _], **[_, _], T, A] private[Term]() extends Term[:=>:, **, T, A] {
     def visit[R](visitor: TermVisitor[:=>:, **, T, A, R]): R = visitor.accept(this)
     protected def containsVarOrApp[X](v: Var[:=>:, **, T, X]): Boolean = this == v
-    def elimAbs = this
     protected def unapply[X](x: Var[:=>:, **, T, X]): Term[:=>:, **, T, X :=>: A] =
       sameVar(this, x) match {
         case Some(ev) => ev.subst[λ[χ => Term[:=>:, **, T, χ :=>: A]]](id[:=>:, **, T, A])
