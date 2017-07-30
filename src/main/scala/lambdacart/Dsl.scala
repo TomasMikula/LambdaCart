@@ -55,7 +55,11 @@ trait Dsl {
 
   implicit def CC: CCC.Aux[:=>:, **, Unit]
 
-  def apply[A, B](f: τ[A] => τ[B]): A :=>: B = compile(τ(f).purify)
+  def apply[A, B](f: τ[A] => τ[B]): A :=>: B =
+    parse(f).compile
+
+  def parse[A, B](f: τ[A] => τ[B]): Term[:=>:, **, Unit, A :=>: B] =
+    τ(f).purify.elimAbs
 
 
   implicit class ArrowSyntax[A, B](f: A :=>: B) {
