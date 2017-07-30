@@ -42,8 +42,27 @@ trait Dsl {
   type Unit
 
   type τ[A] = ImpureTerm[:=>:, **, Unit, A]
+  type AST[A] = Term[:=>:, **, Unit, A]
 
-  def τ[A, B](f: τ[A] => τ[B]): τ[A :=>: B] = Impure(f)
+  implicit def CC: CCC.Aux[:=>:, **, Unit]
+
+  def τ[A, R](φ: τ[A] => τ[R]): τ[A :=>: R] =
+    Impure(φ)
+
+  def τ[A, B, R](φ: (τ[A], τ[B]) => τ[R]): τ[A :=>: B :=>: R] =
+    τ[A, B :=>: R](a => τ(b => φ(a, b)))
+
+  def τ[A, B, C, R](φ: (τ[A], τ[B], τ[C]) => τ[R]): τ[A :=>: B :=>: C :=>: R] =
+    τ[A, B, C :=>: R]((a, b) => τ(c => φ(a, b, c)))
+
+  def τ[A, B, C, D, R](φ: (τ[A], τ[B], τ[C], τ[D]) => τ[R]): τ[A :=>: B :=>: C :=>: D :=>: R] =
+    τ[A, B, C, D :=>: R]((a, b, c) => τ(d => φ(a, b, c, d)))
+
+  def τ[A, B, C, D, E, R](φ: (τ[A], τ[B], τ[C], τ[D], τ[E]) => τ[R]): τ[A :=>: B :=>: C :=>: D :=>: E :=>: R] =
+    τ[A, B, C, D, E :=>: R]((a, b, c, d) => τ(e => φ(a, b, c, d, e)))
+
+  def τ[A, B, C, D, E, F, R](φ: (τ[A], τ[B], τ[C], τ[D], τ[E], τ[F]) => τ[R]): τ[A :=>: B :=>: C :=>: D :=>: E :=>: F :=>: R] =
+    τ[A, B, C, D, E, F :=>: R]((a, b, c, d, e) => τ(f => φ(a, b, c, d, e, f)))
 
   def Obj[A](f: Unit :=>: A): τ[A] =
     Pure(Term.obj(arr[:=>:, **, Unit, Unit, A](f)))
@@ -53,13 +72,31 @@ trait Dsl {
     Pure(app(uncurry(f1.purify), ab.purify))
   }
 
-  implicit def CC: CCC.Aux[:=>:, **, Unit]
+  def apply[A, R](φ: τ[A] => τ[R]): A :=>: R =
+    parse(φ).compile
+  def apply[A, B, R](φ: (τ[A], τ[B]) => τ[R]): A :=>: B :=>: R =
+    parse(φ).compile
+  def apply[A, B, C, R](φ: (τ[A], τ[B], τ[C]) => τ[R]): A :=>: B :=>: C :=>: R =
+    parse(φ).compile
+  def apply[A, B, C, D, R](φ: (τ[A], τ[B], τ[C], τ[D]) => τ[R]): A :=>: B :=>: C :=>: D :=>: R =
+    parse(φ).compile
+  def apply[A, B, C, D, E, R](φ: (τ[A], τ[B], τ[C], τ[D], τ[E]) => τ[R]): A :=>: B :=>: C :=>: D :=>: E :=>: R =
+    parse(φ).compile
+  def apply[A, B, C, D, E, F, R](φ: (τ[A], τ[B], τ[C], τ[D], τ[E], τ[F]) => τ[R]): A :=>: B :=>: C :=>: D :=>: E :=>: F :=>: R =
+    parse(φ).compile
 
-  def apply[A, B](f: τ[A] => τ[B]): A :=>: B =
-    parse(f).compile
-
-  def parse[A, B](f: τ[A] => τ[B]): Term[:=>:, **, Unit, A :=>: B] =
-    τ(f).purify.elimAbs
+  def parse[A, R](φ: τ[A] => τ[R]): AST[A :=>: R] =
+    τ(φ).purify.elimAbs
+  def parse[A, B, R](φ: (τ[A], τ[B]) => τ[R]): AST[A :=>: B :=>: R] =
+    τ(φ).purify.elimAbs
+  def parse[A, B, C, R](φ: (τ[A], τ[B], τ[C]) => τ[R]): AST[A :=>: B :=>: C :=>: R] =
+    τ(φ).purify.elimAbs
+  def parse[A, B, C, D, R](φ: (τ[A], τ[B], τ[C], τ[D]) => τ[R]): AST[A :=>: B :=>: C :=>: D :=>: R] =
+    τ(φ).purify.elimAbs
+  def parse[A, B, C, D, E, R](φ: (τ[A], τ[B], τ[C], τ[D], τ[E]) => τ[R]): AST[A :=>: B :=>: C :=>: D :=>: E :=>: R] =
+    τ(φ).purify.elimAbs
+  def parse[A, B, C, D, E, F, R](φ: (τ[A], τ[B], τ[C], τ[D], τ[E], τ[F]) => τ[R]): AST[A :=>: B :=>: C :=>: D :=>: E :=>: F :=>: R] =
+    τ(φ).purify.elimAbs
 
 
   implicit class ArrowSyntax[A, B](f: A :=>: B) {

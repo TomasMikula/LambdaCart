@@ -24,24 +24,24 @@ trait MyDsl extends ExtendedDsl { dsl =>
   //                 /       /          iteration (loop body)
   //                /       /          / 
   def forLoop[A]: Nat :=>: A :=>: (A :=>: A) :=>: A =
-    dsl { n => τ(a => τ(f =>
+    dsl { (n, a, f) =>
       doWhile[A**Nat, A]( a**n )( both(_) { a => n =>
         maybe[Nat, (A**Nat)\/A](dec(n)) (
           _ => \/-(a)                  )(
           n => -\/(f(a)**n)             )
       })
-    ))}
+    }
 
 
   def plus: Nat :=>: Nat :=>: Nat =
-    dsl { a => τ(b =>
+    dsl { (a, b) =>
       forLoop(a)(b)(inc)
-    )}
+    }
   
   def times: Nat :=>: Nat :=>: Nat =
-    dsl { a => τ(b =>
+    dsl { (a, b) =>
       forLoop(a)(zero)(plus(b))
-    )}
+    }
 
 
   // Interface for interpreting arrows
