@@ -30,11 +30,6 @@ sealed trait Term[:=>:[_, _], **[_, _], T, A] {
 
   private type Transformer = Visitor[τ[A]]
 
-  // Note: Methods implemented separately in each case class due to
-  // major suckiness of pattern matching on GADTs.
-
-  def compile(implicit CC: CCC.Aux[:=>:, **, T]): A
-
   def visit[Z](visitor: Visitor[Z]): Z
 
   private def transform(tr: Transformer): τ[A] = visit(tr)
@@ -177,6 +172,24 @@ sealed trait Term[:=>:[_, _], **[_, _], T, A] {
       a.a == v || a.b.containsVarOrApp(v)
   })
 
+  final def compile(implicit CC: CCC.Aux[:=>:, **, T]): A = visit(new Visitor[A] {
+
+    def apply[X, Y]   (a:       Arr[X,Y])(implicit ev: (X :=>: Y)      === A) = ev(a.f)
+    def apply[X]      (a:          Id[X])(implicit ev: (X :=>: X)      === A) = ev(CC.id[X])
+    def apply[X, Y]   (a:       Snd[X,Y])(implicit ev: ((X**Y) :=>: Y) === A) = ev(CC.snd[X, Y])
+    def apply[X, Y]   (a:       Fst[X,Y])(implicit ev: ((X**Y) :=>: X) === A) = ev(CC.fst[X, Y])
+    def apply[X]      (a:    Terminal[X])(implicit ev: (X :=>: T)      === A) = ev(CC.terminal[X])
+    def apply[X, Y, Z](a: Uncurry[X,Y,Z])(implicit ev: ((X**Y) :=>: Z) === A) = ev(CC.uncurry(a.f.compile))
+    def apply[X, Y, Z](a:   Curry[X,Y,Z])(implicit ev: (X :=>: Y:=>:Z) === A) = ev(CC.curry(a.f.compile))
+    def apply[X, Y, Z](a:    Prod[X,Y,Z])(implicit ev: (X :=>: (Y**Z)) === A) = ev(CC.prod(a.f.compile, a.g.compile))
+    def apply[X, Y, Z](a: Compose[X,Y,Z])(implicit ev: (X :=>: Z)      === A) = ev(CC.compose(a.f.compile, a.g.compile))
+
+    def apply(a: Obj[A]) = sys.error("Cannot compile Obj.")
+    def apply(a: Var[A]) = sys.error("Cannot compile variable.")
+    def apply[X](a: App[X,A]) = sys.error("Cannot compile function application.")
+    def apply[X, Y](a: Abs[X,Y])(implicit ev: (X :=>: Y) === A) = sys.error("Cannot compile lambda abstraction.")
+  })
+
 
   /* Syntax */
 
@@ -261,78 +274,54 @@ object Term {
 
   case class Arr[:=>:[_, _], **[_, _], T, A, B](f: A :=>: B) extends Term[:=>:, **, T, A :=>: B] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
-    def compile(implicit CC: CCC.Aux[:=>:, **, T]): A :=>: B = f
   }
 
   case class Id[:=>:[_, _], **[_, _], T, A]() extends Term[:=>:, **, T, A :=>: A] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
-    def compile(implicit CC: CCC.Aux[:=>:, **, T]): A :=>: A = CC.id[A]
   }
 
   case class Compose[:=>:[_, _], **[_, _], T, A, B, C](f: Term[:=>:, **, T, B :=>: C], g: Term[:=>:, **, T, A :=>: B]) extends Term[:=>:, **, T, A :=>: C] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
-    def compile(implicit CC: CCC.Aux[:=>:, **, T]): A :=>: C =
-      CC.compose(f.compile, g.compile)
   }
 
   case class Fst[:=>:[_, _], **[_, _], T, A, B]() extends Term[:=>:, **, T, (A**B) :=>: A] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
-    def compile(implicit CC: CCC.Aux[:=>:, **, T]): (A**B) :=>: A =
-      CC.fst[A, B]
   }
 
   case class Snd[:=>:[_, _], **[_, _], T, A, B]() extends Term[:=>:, **, T, (A**B) :=>: B] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
-    def compile(implicit CC: CCC.Aux[:=>:, **, T]): (A**B) :=>: B =
-      CC.snd[A, B]
   }
 
   case class Prod[:=>:[_, _], **[_, _], T, A, B, C](f: Term[:=>:, **, T, A :=>: B], g: Term[:=>:, **, T, A :=>: C]) extends Term[:=>:, **, T, A :=>: (B**C)] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
-    def compile(implicit CC: CCC.Aux[:=>:, **, T]): A :=>: (B**C) =
-      CC.prod(f.compile, g.compile)
   }
 
   case class Terminal[:=>:[_, _], **[_, _], T, A]() extends Term[:=>:, **, T, A :=>: T] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
-    def compile(implicit CC: CCC.Aux[:=>:, **, T]): A :=>: T =
-      CC.terminal[A]
   }
 
   case class Curry[:=>:[_, _], **[_, _], T, A, B, C](f: Term[:=>:, **, T, (A**B) :=>: C]) extends Term[:=>:, **, T, A :=>: B :=>: C] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
-    def compile(implicit CC: CCC.Aux[:=>:, **, T]): A :=>: B :=>: C =
-      CC.curry(f.compile)
   }
 
   case class Uncurry[:=>:[_, _], **[_, _], T, A, B, C](f: Term[:=>:, **, T, A :=>: B :=>: C]) extends Term[:=>:, **, T, (A**B) :=>: C] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
-    def compile(implicit CC: CCC.Aux[:=>:, **, T]): (A**B) :=>: C =
-      CC.uncurry(f.compile)
   }
 
   case class Obj[:=>:[_, _], **[_, _], T, A](f: Term[:=>:, **, T, T :=>: A]) extends Term[:=>:, **, T, A] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
-    def compile(implicit CC: CCC.Aux[:=>:, **, T]): A =
-      sys.error("Cannot compile Obj.")
   }
 
   case class Abs[:=>:[_, _], **[_, _], T, A, B](a: Term.Var[:=>:, **, T, A], b: Term[:=>:, **, T, B]) extends Term[:=>:, **, T, A :=>: B] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
-    def compile(implicit CC: CCC.Aux[:=>:, **, T]): A :=>: B =
-      sys.error("Cannot compile lambda abstraction.")
   }
 
   case class App[:=>:[_, _], **[_, _], T, A, B](f: Term[:=>:, **, T, A :=>: B], a: Term[:=>:, **, T, A]) extends Term[:=>:, **, T, B] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
-    def compile(implicit CC: CCC.Aux[:=>:, **, T]): B =
-      sys.error("Cannot compile function application.")
   }
 
   class Var[:=>:[_, _], **[_, _], T, A] private[Term]() extends Term[:=>:, **, T, A] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
-    def compile(implicit CC: CCC.Aux[:=>:, **, T]): A =
-      sys.error("Cannot compile variable.")
   }
 
   def sameVar[:=>:[_, _], **[_, _], T, X, Y](x: Var[:=>:, **, T, X], y: Var[:=>:, **, T, Y]): Option[X === Y] =
