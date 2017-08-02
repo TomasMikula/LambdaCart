@@ -172,7 +172,7 @@ sealed trait Term[:=>:[_, _], **[_, _], T, A] {
       a.a == v || a.b.containsVarOrApp(v)
   })
 
-  final def compile(implicit CC: CCC.Aux[:=>:, **, T]): A = visit(new Visitor[A] {
+  final def compile(implicit CC: CCC.AuxHI[:=>:, **, T]): A = visit(new Visitor[A] {
 
     def apply[X, Y]   (a:       Arr[X,Y])(implicit ev: (X :=>: Y)      === A) = ev(a.f)
     def apply[X]      (a:          Id[X])(implicit ev: (X :=>: X)      === A) = ev(CC.id[X])

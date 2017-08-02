@@ -9,7 +9,7 @@ trait Dsl {
 
   type τ[A] = Term[:=>:, **, Unit, A]
 
-  implicit def CC: CCC.Aux[:=>:, **, Unit]
+  implicit def CC: CCC.AuxHI[:=>:, **, Unit]
 
   def τ[A, R](φ: τ[A] => τ[R]): τ[A :=>: R] =
     internalize(φ)

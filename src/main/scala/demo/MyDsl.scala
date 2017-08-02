@@ -184,9 +184,10 @@ private[demo] object MyDslImpl extends MyDsl {
         stack
     }
 
-  implicit def CC: CCC.Aux[:=>:, **, Unit] = new CCC[:=>:] {
+  implicit def CC: CCC.AuxHI[:=>:, **, Unit] = new CCC[:=>:] {
     type **[A, B] = MyDslImpl.**[A, B]
     type Unit = MyDslImpl.Unit
+    type Hom[A, B] = A :=>: B
 
     def id[A]: A :=>: A = List()
     def compose[A, B, C](f: B :=>: C, g: A :=>: B): A :=>: C = g ::: f
