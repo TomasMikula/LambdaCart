@@ -7,26 +7,26 @@ import scalaz.Leibniz.===
   * a Cartesian closed category. Used as an intermediate representation
   * in the translation from lambda expressions to Cartesian closed operations.
   */
-sealed trait Term[:=>:[_, _], **[_, _], T, A] {
+sealed trait Term[:=>:[_, _], **[_, _], T, H[_, _], A] {
   import Term._
 
-  type τ[X]             =          Term[:=>:, **, T, X]
+  type τ[X]             =          Term[:=>:, **, T, H, X]
 
-  type Id[X]            =       Term.Id[:=>:, **, T, X]
-  type Var[X]           =      Term.Var[:=>:, **, T, X]
-  type Obj[X]           =      Term.Obj[:=>:, **, T, X]
-  type App[X, Y]        =      Term.App[:=>:, **, T, X, Y]
-  type Abs[X, Y]        =      Term.Abs[:=>:, **, T, X, Y]
-  type Arr[X, Y]        =      Term.Arr[:=>:, **, T, X, Y]
-  type Fst[X, Y]        =      Term.Fst[:=>:, **, T, X, Y]
-  type Snd[X, Y]        =      Term.Snd[:=>:, **, T, X, Y]
-  type Prod[X, Y, Z]    =     Term.Prod[:=>:, **, T, X, Y, Z]
-  type Terminal[X]      = Term.Terminal[:=>:, **, T, X]
-  type Compose[X, Y, Z] =  Term.Compose[:=>:, **, T, X, Y, Z]
-  type Curry[X, Y, Z]   =    Term.Curry[:=>:, **, T, X, Y, Z]
-  type Uncurry[X, Y, Z] =  Term.Uncurry[:=>:, **, T, X, Y, Z]
+  type Id[X]            =       Term.Id[:=>:, **, T, H, X]
+  type Var[X]           =      Term.Var[:=>:, **, T, H, X]
+  type Obj[X]           =      Term.Obj[:=>:, **, T, H, X]
+  type App[X, Y]        =      Term.App[:=>:, **, T, H, X, Y]
+  type Abs[X, Y]        =      Term.Abs[:=>:, **, T, H, X, Y]
+  type Arr[X, Y]        =      Term.Arr[:=>:, **, T, H, X, Y]
+  type Fst[X, Y]        =      Term.Fst[:=>:, **, T, H, X, Y]
+  type Snd[X, Y]        =      Term.Snd[:=>:, **, T, H, X, Y]
+  type Prod[X, Y, Z]    =     Term.Prod[:=>:, **, T, H, X, Y, Z]
+  type Terminal[X]      = Term.Terminal[:=>:, **, T, H, X]
+  type Compose[X, Y, Z] =  Term.Compose[:=>:, **, T, H, X, Y, Z]
+  type Curry[X, Y, Z]   =    Term.Curry[:=>:, **, T, H, X, Y, Z]
+  type Uncurry[X, Y, Z] =  Term.Uncurry[:=>:, **, T, H, X, Y, Z]
 
-  type Visitor[R]       =   TermVisitor[:=>:, **, T, A, R]
+  type Visitor[R]       =   TermVisitor[:=>:, **, T, H, A, R]
 
   private type Transformer = Visitor[τ[A]]
 
@@ -102,17 +102,17 @@ sealed trait Term[:=>:[_, _], **[_, _], T, A] {
 
     def apply(a: Var[A]) =
       sameVar(a, x) match {
-        case Some(ev) => ev.subst[λ[χ => τ[χ :=>: A]]](id[:=>:, **, T, A])
-        case None     => app(constA[:=>:, **, T, A, V], a)
+        case Some(ev) => ev.subst[λ[χ => τ[χ :=>: A]]](id[:=>:, **, T, H, A])
+        case None     => app(constA[:=>:, **, T, H, A, V], a)
       }
 
     def apply[X, Y, Z](a: Uncurry[X,Y,Z])(implicit ev: :=>:[**[X,Y],Z] === A) = (
-      if(a.containsVarOrApp(x)) curry(andThen(assocL[:=>:, **, T, V, X, Y], uncurry(uncurry(a.f.unapply(x)))))
+      if(a.containsVarOrApp(x)) curry(andThen(assocL[:=>:, **, T, H, V, X, Y], uncurry(uncurry(a.f.unapply(x)))))
       else const[X**Y, Z, V](a)
     ).coerce(ev.lift[V :=>: ?])
 
     def apply[X, Y, Z](a: Curry[X,Y,Z])(implicit ev: (X :=>: Y :=>: Z) === A) = (
-      if(a.containsVarOrApp(x)) curry(curry(andThen(assocR[:=>:, **, T, V, X, Y], uncurry(a.f.unapply(x)))))
+      if(a.containsVarOrApp(x)) curry(curry(andThen(assocR[:=>:, **, T, H, V, X, Y], uncurry(a.f.unapply(x)))))
       else const[X, Y :=>: Z, V](a)
     ).coerce(ev.lift[V :=>: ?])
 
@@ -123,7 +123,7 @@ sealed trait Term[:=>:[_, _], **[_, _], T, A] {
 
     def apply[X, Y, Z](a: Compose[X,Y,Z])(implicit ev: :=>:[X,Z] === A) = (
       if(a.containsVarOrApp(x))
-        andThen(prod(a.f.unapply(x), a.g.unapply(x)), composeA[:=>:, **, T, X, Y, Z])
+        andThen(prod(a.f.unapply(x), a.g.unapply(x)), composeA[:=>:, **, T, H, X, Y, Z])
       else
         const[X, Z, V](a)
     ).coerce(ev.lift[V :=>: ?])
@@ -134,7 +134,7 @@ sealed trait Term[:=>:[_, _], **[_, _], T, A] {
 
     def apply[X](a: App[X,A]) =
       if(!a.f.containsVarOrApp(x)) andThen(a.a.unapply(x), a.f)
-      else andThen(prod(a.f.unapply(x), a.a.unapply(x)), appA[:=>:, **, T, X, A])
+      else andThen(prod(a.f.unapply(x), a.a.unapply(x)), appA[:=>:, **, T, H, X, A])
 
     def apply[X, Y](a: Abs[X,Y])(implicit ev: (X :=>: Y) === A) =
       sys.error("Abstraction should have been eliminated first.")
@@ -208,123 +208,123 @@ sealed trait Term[:=>:[_, _], **[_, _], T, A] {
 object Term {
 
   // wrap primitive arrow
-  def arr[:=>:[_, _], **[_, _], T, A, B](f: A :=>: B): Term[:=>:, **, T, A :=>: B] = Arr(f)
+  def arr[:=>:[_, _], **[_, _], T, H[_, _], A, B](f: A :=>: B): Term[:=>:, **, T, H, A :=>: B] = Arr(f)
 
   // Cartesian operations
-  def id[:=>:[_, _], **[_, _], T, A]: Term[:=>:, **, T, A :=>: A] = Id()
-  def compose[:=>:[_, _], **[_, _], T, A, B, C](f: Term[:=>:, **, T, B :=>: C], g: Term[:=>:, **, T, A :=>: B]): Term[:=>:, **, T, A :=>: C] = Compose(f, g)
-  def fst[:=>:[_, _], **[_, _], T, A, B]: Term[:=>:, **, T, (A**B) :=>: A] = Fst()
-  def snd[:=>:[_, _], **[_, _], T, A, B]: Term[:=>:, **, T, (A**B) :=>: B] = Snd()
-  def prod[:=>:[_, _], **[_, _], T, A, B, C](f: Term[:=>:, **, T, A :=>: B], g: Term[:=>:, **, T, A :=>: C]): Term[:=>:, **, T, A :=>: (B**C)] = Prod(f, g)
-  def terminal[:=>:[_, _], **[_, _], T, A]: Term[:=>:, **, T, A :=>: T] = Terminal()
-  def curry[:=>:[_, _], **[_, _], T, A, B, C](f: Term[:=>:, **, T, (A**B) :=>: C]): Term[:=>:, **, T, A :=>: B :=>: C] = Curry(f)
-  def uncurry[:=>:[_, _], **[_, _], T, A, B, C](f: Term[:=>:, **, T, A :=>: B :=>: C]): Term[:=>:, **, T, (A**B) :=>: C] = Uncurry(f)
+  def id[:=>:[_, _], **[_, _], T, H[_, _], A]: Term[:=>:, **, T, H, A :=>: A] = Id()
+  def compose[:=>:[_, _], **[_, _], T, H[_, _], A, B, C](f: Term[:=>:, **, T, H, B :=>: C], g: Term[:=>:, **, T, H, A :=>: B]): Term[:=>:, **, T, H, A :=>: C] = Compose(f, g)
+  def fst[:=>:[_, _], **[_, _], T, H[_, _], A, B]: Term[:=>:, **, T, H, (A**B) :=>: A] = Fst()
+  def snd[:=>:[_, _], **[_, _], T, H[_, _], A, B]: Term[:=>:, **, T, H, (A**B) :=>: B] = Snd()
+  def prod[:=>:[_, _], **[_, _], T, H[_, _], A, B, C](f: Term[:=>:, **, T, H, A :=>: B], g: Term[:=>:, **, T, H, A :=>: C]): Term[:=>:, **, T, H, A :=>: (B**C)] = Prod(f, g)
+  def terminal[:=>:[_, _], **[_, _], T, H[_, _], A]: Term[:=>:, **, T, H, A :=>: T] = Terminal()
+  def curry[:=>:[_, _], **[_, _], T, H[_, _], A, B, C](f: Term[:=>:, **, T, H, (A**B) :=>: C]): Term[:=>:, **, T, H, A :=>: B :=>: C] = Curry(f)
+  def uncurry[:=>:[_, _], **[_, _], T, H[_, _], A, B, C](f: Term[:=>:, **, T, H, A :=>: B :=>: C]): Term[:=>:, **, T, H, (A**B) :=>: C] = Uncurry(f)
 
   // object A represented as an arrow from terminal object to A (eliminated during compilation)
-  def obj[:=>:[_, _], **[_, _], T, A](f: Term[:=>:, **, T, T :=>: A]): Term[:=>:, **, T, A] = Obj(f)
+  def obj[:=>:[_, _], **[_, _], T, H[_, _], A](f: Term[:=>:, **, T, H, T :=>: A]): Term[:=>:, **, T, H, A] = Obj(f)
 
   // Lambda operations (will be eliminated during compilation)
-  def freshVar[:=>:[_, _], **[_, _], T, A]: Var[:=>:, **, T, A] = new Var
-  def abs[:=>:[_, _], **[_, _], T, A, B](a: Var[:=>:, **, T, A], b: Term[:=>:, **, T, B]): Term[:=>:, **, T, A :=>: B] = Abs(a, b)
-  def app[:=>:[_, _], **[_, _], T, A, B](f: Term[:=>:, **, T, A :=>: B], a: Term[:=>:, **, T, A]): Term[:=>:, **, T, B] = App(f, a)
+  def freshVar[:=>:[_, _], **[_, _], T, H[_, _], A]: Var[:=>:, **, T, H, A] = new Var
+  def abs[:=>:[_, _], **[_, _], T, H[_, _], A, B](a: Var[:=>:, **, T, H, A], b: Term[:=>:, **, T, H, B]): Term[:=>:, **, T, H, A :=>: B] = Abs(a, b)
+  def app[:=>:[_, _], **[_, _], T, H[_, _], A, B](f: Term[:=>:, **, T, H, A :=>: B], a: Term[:=>:, **, T, H, A]): Term[:=>:, **, T, H, B] = App(f, a)
 
 
-  // derived Cartesian operations
+  // derived Cartesian closed operations
 
-  def constA[:=>:[_, _], **[_, _], T, A, B]: Term[:=>:, **, T, A :=>: B :=>: A] =
-    curry(fst[:=>:, **, T, A, B])
+  def constA[:=>:[_, _], **[_, _], T, H[_, _], A, B]: Term[:=>:, **, T, H, A :=>: B :=>: A] =
+    curry(fst[:=>:, **, T, H, A, B])
 
-  def const[:=>:[_, _], **[_, _], T, A, B, C](f: Term[:=>:, **, T, A :=>: B]): Term[:=>:, **, T, C :=>: A :=>: B] =
-    curry(compose(f, snd[:=>:, **, T, C, A]))
+  def const[:=>:[_, _], **[_, _], T, H[_, _], A, B, C](f: Term[:=>:, **, T, H, A :=>: B]): Term[:=>:, **, T, H, C :=>: A :=>: B] =
+    curry(compose(f, snd[:=>:, **, T, H, C, A]))
 
-  def andThen[:=>:[_, _], **[_, _], T, A, B, C](f: Term[:=>:, **, T, A :=>: B], g: Term[:=>:, **, T, B :=>: C]): Term[:=>:, **, T, A :=>: C] =
+  def andThen[:=>:[_, _], **[_, _], T, H[_, _], A, B, C](f: Term[:=>:, **, T, H, A :=>: B], g: Term[:=>:, **, T, H, B :=>: C]): Term[:=>:, **, T, H, A :=>: C] =
     compose(g, f)
 
-  def flip[:=>:[_, _], **[_, _], T, A, B, C](f: Term[:=>:, **, T, (A**B) :=>: C]): Term[:=>:, **, T, (B**A) :=>: C] =
-    compose(f, prod(snd[:=>:, **, T, B, A], fst[:=>:, **, T, B, A]))
+  def flip[:=>:[_, _], **[_, _], T, H[_, _], A, B, C](f: Term[:=>:, **, T, H, (A**B) :=>: C]): Term[:=>:, **, T, H, (B**A) :=>: C] =
+    compose(f, prod(snd[:=>:, **, T, H, B, A], fst[:=>:, **, T, H, B, A]))
 
-  def swap[:=>:[_, _], **[_, _], T, A, B, C](f: Term[:=>:, **, T, A :=>: B :=>: C]): Term[:=>:, **, T, B :=>: A :=>: C] =
+  def swap[:=>:[_, _], **[_, _], T, H[_, _], A, B, C](f: Term[:=>:, **, T, H, A :=>: B :=>: C]): Term[:=>:, **, T, H, B :=>: A :=>: C] =
     curry(flip(uncurry(f)))
 
-  def pair[:=>:[_, _], **[_, _], T, A, B](a: Term[:=>:, **, T, A], b: Term[:=>:, **, T, B]): Term[:=>:, **, T, A**B] =
-    app(app(curry(id[:=>:, **, T, A**B]), a), b)
+  def pair[:=>:[_, _], **[_, _], T, H[_, _], A, B](a: Term[:=>:, **, T, H, A], b: Term[:=>:, **, T, H, B]): Term[:=>:, **, T, H, A**B] =
+    app(app(curry(id[:=>:, **, T, H, A**B]), a), b)
 
-  def appA[:=>:[_, _], **[_, _], T, A, B]: Term[:=>:, **, T, ((A :=>: B) ** A) :=>: B] =
-    uncurry(id[:=>:, **, T, A :=>: B])
+  def appA[:=>:[_, _], **[_, _], T, H[_, _], A, B]: Term[:=>:, **, T, H, ((A :=>: B) ** A) :=>: B] =
+    uncurry(id[:=>:, **, T, H, A :=>: B])
 
-  def composeA[:=>:[_, _], **[_, _], T, A, B, C]: Term[:=>:, **, T, ((B :=>: C) ** (A :=>: B)) :=>: A :=>: C] =
-    flip(curry(flip(compose(uncurry(flip(andThen(appA[:=>:, **, T, A, B], curry(flip(appA[:=>:, **, T, B, C]))))), assocL))))
+  def composeA[:=>:[_, _], **[_, _], T, H[_, _], A, B, C]: Term[:=>:, **, T, H, ((B :=>: C) ** (A :=>: B)) :=>: A :=>: C] =
+    flip(curry(flip(compose(uncurry(flip(andThen(appA[:=>:, **, T, H, A, B], curry(flip(appA[:=>:, **, T, H, B, C]))))), assocL))))
 
-  def assocR[:=>:[_, _], **[_, _], T, A, B, C]: Term[:=>:, **, T, ((A**B)**C) :=>: (A**(B**C))] = {
-    val pa = compose(fst[:=>:, **, T, A, B], fst[:=>:, **, T, A**B, C])
-    val pb = compose(snd[:=>:, **, T, A, B], fst[:=>:, **, T, A**B, C])
-    val pc = snd[:=>:, **, T, A**B, C]
+  def assocR[:=>:[_, _], **[_, _], T, H[_, _], A, B, C]: Term[:=>:, **, T, H, ((A**B)**C) :=>: (A**(B**C))] = {
+    val pa = compose(fst[:=>:, **, T, H, A, B], fst[:=>:, **, T, H, A**B, C])
+    val pb = compose(snd[:=>:, **, T, H, A, B], fst[:=>:, **, T, H, A**B, C])
+    val pc = snd[:=>:, **, T, H, A**B, C]
     prod(pa, prod(pb, pc))
   }
 
-  def assocL[:=>:[_, _], **[_, _], T, A, B, C]: Term[:=>:, **, T, (A**(B**C)) :=>: ((A**B)**C)] = {
-    val pa = fst[:=>:, **, T, A, B**C]
-    val pb = compose(fst[:=>:, **, T, B, C], snd[:=>:, **, T, A, B**C])
-    val pc = compose(snd[:=>:, **, T, B, C], snd[:=>:, **, T, A, B**C])
+  def assocL[:=>:[_, _], **[_, _], T, H[_, _], A, B, C]: Term[:=>:, **, T, H, (A**(B**C)) :=>: ((A**B)**C)] = {
+    val pa = fst[:=>:, **, T, H, A, B**C]
+    val pb = compose(fst[:=>:, **, T, H, B, C], snd[:=>:, **, T, H, A, B**C])
+    val pc = compose(snd[:=>:, **, T, H, B, C], snd[:=>:, **, T, H, A, B**C])
     prod(prod(pa, pb), pc)
   }
 
 
   // implementation
 
-  case class Arr[:=>:[_, _], **[_, _], T, A, B](f: A :=>: B) extends Term[:=>:, **, T, A :=>: B] {
+  case class Arr[:=>:[_, _], **[_, _], T, H[_, _], A, B](f: A :=>: B) extends Term[:=>:, **, T, H, A :=>: B] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
   }
 
-  case class Id[:=>:[_, _], **[_, _], T, A]() extends Term[:=>:, **, T, A :=>: A] {
+  case class Id[:=>:[_, _], **[_, _], T, H[_, _], A]() extends Term[:=>:, **, T, H, A :=>: A] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
   }
 
-  case class Compose[:=>:[_, _], **[_, _], T, A, B, C](f: Term[:=>:, **, T, B :=>: C], g: Term[:=>:, **, T, A :=>: B]) extends Term[:=>:, **, T, A :=>: C] {
+  case class Compose[:=>:[_, _], **[_, _], T, H[_, _], A, B, C](f: Term[:=>:, **, T, H, B :=>: C], g: Term[:=>:, **, T, H, A :=>: B]) extends Term[:=>:, **, T, H, A :=>: C] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
   }
 
-  case class Fst[:=>:[_, _], **[_, _], T, A, B]() extends Term[:=>:, **, T, (A**B) :=>: A] {
+  case class Fst[:=>:[_, _], **[_, _], T, H[_, _], A, B]() extends Term[:=>:, **, T, H, (A**B) :=>: A] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
   }
 
-  case class Snd[:=>:[_, _], **[_, _], T, A, B]() extends Term[:=>:, **, T, (A**B) :=>: B] {
+  case class Snd[:=>:[_, _], **[_, _], T, H[_, _], A, B]() extends Term[:=>:, **, T, H, (A**B) :=>: B] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
   }
 
-  case class Prod[:=>:[_, _], **[_, _], T, A, B, C](f: Term[:=>:, **, T, A :=>: B], g: Term[:=>:, **, T, A :=>: C]) extends Term[:=>:, **, T, A :=>: (B**C)] {
+  case class Prod[:=>:[_, _], **[_, _], T, H[_, _], A, B, C](f: Term[:=>:, **, T, H, A :=>: B], g: Term[:=>:, **, T, H, A :=>: C]) extends Term[:=>:, **, T, H, A :=>: (B**C)] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
   }
 
-  case class Terminal[:=>:[_, _], **[_, _], T, A]() extends Term[:=>:, **, T, A :=>: T] {
+  case class Terminal[:=>:[_, _], **[_, _], T, H[_, _], A]() extends Term[:=>:, **, T, H, A :=>: T] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
   }
 
-  case class Curry[:=>:[_, _], **[_, _], T, A, B, C](f: Term[:=>:, **, T, (A**B) :=>: C]) extends Term[:=>:, **, T, A :=>: B :=>: C] {
+  case class Curry[:=>:[_, _], **[_, _], T, H[_, _], A, B, C](f: Term[:=>:, **, T, H, (A**B) :=>: C]) extends Term[:=>:, **, T, H, A :=>: B :=>: C] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
   }
 
-  case class Uncurry[:=>:[_, _], **[_, _], T, A, B, C](f: Term[:=>:, **, T, A :=>: B :=>: C]) extends Term[:=>:, **, T, (A**B) :=>: C] {
+  case class Uncurry[:=>:[_, _], **[_, _], T, H[_, _], A, B, C](f: Term[:=>:, **, T, H, A :=>: B :=>: C]) extends Term[:=>:, **, T, H, (A**B) :=>: C] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
   }
 
-  case class Obj[:=>:[_, _], **[_, _], T, A](f: Term[:=>:, **, T, T :=>: A]) extends Term[:=>:, **, T, A] {
+  case class Obj[:=>:[_, _], **[_, _], T, H[_, _], A](f: Term[:=>:, **, T, H, T :=>: A]) extends Term[:=>:, **, T, H, A] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
   }
 
-  case class Abs[:=>:[_, _], **[_, _], T, A, B](a: Term.Var[:=>:, **, T, A], b: Term[:=>:, **, T, B]) extends Term[:=>:, **, T, A :=>: B] {
+  case class Abs[:=>:[_, _], **[_, _], T, H[_, _], A, B](a: Term.Var[:=>:, **, T, H, A], b: Term[:=>:, **, T, H, B]) extends Term[:=>:, **, T, H, A :=>: B] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
   }
 
-  case class App[:=>:[_, _], **[_, _], T, A, B](f: Term[:=>:, **, T, A :=>: B], a: Term[:=>:, **, T, A]) extends Term[:=>:, **, T, B] {
+  case class App[:=>:[_, _], **[_, _], T, H[_, _], A, B](f: Term[:=>:, **, T, H, A :=>: B], a: Term[:=>:, **, T, H, A]) extends Term[:=>:, **, T, H, B] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
   }
 
-  class Var[:=>:[_, _], **[_, _], T, A] private[Term]() extends Term[:=>:, **, T, A] {
+  class Var[:=>:[_, _], **[_, _], T, H[_, _], A] private[Term]() extends Term[:=>:, **, T, H, A] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
   }
 
-  def sameVar[:=>:[_, _], **[_, _], T, X, Y](x: Var[:=>:, **, T, X], y: Var[:=>:, **, T, Y]): Option[X === Y] =
+  def sameVar[:=>:[_, _], **[_, _], T, H[_, _], X, Y](x: Var[:=>:, **, T, H, X], y: Var[:=>:, **, T, H, Y]): Option[X === Y] =
     if(x eq y) Some(Leibniz.force[Nothing, Any, X, Y])
     else None
 
@@ -340,27 +340,27 @@ object Term {
 //    t1.compile
 //  }
 
-  def internalize[:=>:[_, _], **[_, _], T, A, B](f: Term[:=>:, **, T, A] => Term[:=>:, **, T, B]): Term[:=>:, **, T, A :=>: B] = {
-    val v = Term.freshVar[:=>:, **, T, A]
+  def internalize[:=>:[_, _], **[_, _], T, H[_, _], A, B](f: Term[:=>:, **, T, H, A] => Term[:=>:, **, T, H, B]): Term[:=>:, **, T, H, A :=>: B] = {
+    val v = Term.freshVar[:=>:, **, T, H, A]
     Term.abs(v, f(v))
   }
 
 }
 
-trait TermVisitor[:=>:[_, _], **[_, _], T, A, R] {
+trait TermVisitor[:=>:[_, _], **[_, _], T, H[_, _], A, R] {
   import Term._
 
-  def apply[X, Y, Z](a:    Curry[:=>:, **, T, X, Y, Z])(implicit ev: (X :=>: Y :=>: Z) === A) : R
-  def apply[X, Y, Z](a:  Uncurry[:=>:, **, T, X, Y, Z])(implicit ev: ((X ** Y) :=>: Z) === A) : R
-  def apply[X, Y, Z](a:  Compose[:=>:, **, T, X, Y, Z])(implicit ev: (X :=>: Z)        === A) : R
-  def apply[X, Y, Z](a:     Prod[:=>:, **, T, X, Y, Z])(implicit ev: (X :=>: (Y**Z))   === A) : R
-  def apply[X, Y]   (a:      Fst[:=>:, **, T, X, Y])   (implicit ev: ((X**Y) :=>: X)   === A) : R
-  def apply[X, Y]   (a:      Snd[:=>:, **, T, X, Y])   (implicit ev: ((X**Y) :=>: Y)   === A) : R
-  def apply[X]      (a:       Id[:=>:, **, T, X])      (implicit ev: (X :=>: X)        === A) : R
-  def apply[X]      (a: Terminal[:=>:, **, T, X])      (implicit ev: (X :=>: T)        === A) : R
-  def apply[X, Y]   (a:      Arr[:=>:, **, T, X, Y])   (implicit ev: (X :=>: Y)        === A) : R
-  def apply[X, Y]   (a:      Abs[:=>:, **, T, X, Y])   (implicit ev: (X :=>: Y)        === A) : R
-  def apply[X]      (a:      App[:=>:, **, T, X, A])                                          : R
-  def apply         (a:      Obj[:=>:, **, T, A])                                             : R
-  def apply         (a:      Var[:=>:, **, T, A])                                             : R
+  def apply[X, Y, Z](a:    Curry[:=>:, **, T, H, X, Y, Z])(implicit ev: (X :=>: Y :=>: Z) === A) : R
+  def apply[X, Y, Z](a:  Uncurry[:=>:, **, T, H, X, Y, Z])(implicit ev: ((X ** Y) :=>: Z) === A) : R
+  def apply[X, Y, Z](a:  Compose[:=>:, **, T, H, X, Y, Z])(implicit ev: (X :=>: Z)        === A) : R
+  def apply[X, Y, Z](a:     Prod[:=>:, **, T, H, X, Y, Z])(implicit ev: (X :=>: (Y**Z))   === A) : R
+  def apply[X, Y]   (a:      Fst[:=>:, **, T, H, X, Y])   (implicit ev: ((X**Y) :=>: X)   === A) : R
+  def apply[X, Y]   (a:      Snd[:=>:, **, T, H, X, Y])   (implicit ev: ((X**Y) :=>: Y)   === A) : R
+  def apply[X]      (a:       Id[:=>:, **, T, H, X])      (implicit ev: (X :=>: X)        === A) : R
+  def apply[X]      (a: Terminal[:=>:, **, T, H, X])      (implicit ev: (X :=>: T)        === A) : R
+  def apply[X, Y]   (a:      Arr[:=>:, **, T, H, X, Y])   (implicit ev: (X :=>: Y)        === A) : R
+  def apply[X, Y]   (a:      Abs[:=>:, **, T, H, X, Y])   (implicit ev: (X :=>: Y)        === A) : R
+  def apply[X]      (a:      App[:=>:, **, T, H, X, A])                                          : R
+  def apply         (a:      Obj[:=>:, **, T, H, A])                                             : R
+  def apply         (a:      Var[:=>:, **, T, H, A])                                             : R
 }

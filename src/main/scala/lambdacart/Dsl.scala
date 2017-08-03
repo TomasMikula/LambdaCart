@@ -6,8 +6,9 @@ trait Dsl {
   type :=>:[A, B]
   type **[A, B]
   type Unit
+  type Hom[A, B]
 
-  type τ[A] = Term[:=>:, **, Unit, A]
+  type τ[A] = Term[:=>:, **, Unit, Hom, A]
 
   implicit def CC: CCC.AuxHI[:=>:, **, Unit]
 
@@ -30,7 +31,7 @@ trait Dsl {
     τ[A, B, C, D, E, F :=>: R]((a, b, c, d, e) => τ(f => φ(a, b, c, d, e, f)))
 
   def Obj[A](f: Unit :=>: A): τ[A] =
-    Term.obj(arr[:=>:, **, Unit, Unit, A](f))
+    Term.obj(arr[:=>:, **, Unit, Hom, Unit, A](f))
 
   def both[A, B, C](ab: τ[A**B])(f: τ[A] => τ[B] => τ[C]): τ[C] = {
     val f1: τ[A :=>: B :=>: C] = τ((a: τ[A]) => τ(f(a)))
@@ -81,8 +82,8 @@ trait Dsl {
     def apply(g: τ[A] => τ[B]): τ[C] = app(f, τ(g))
   }
   implicit class ProductSyntax[A, B](ab: τ[A**B]) {
-    def _1: τ[A] = app(fst[:=>:, **, Unit, A, B], ab)
-    def _2: τ[B] = app(snd[:=>:, **, Unit, A, B], ab)
+    def _1: τ[A] = app(fst[:=>:, **, Unit, Hom, A, B], ab)
+    def _2: τ[B] = app(snd[:=>:, **, Unit, Hom, A, B], ab)
   }
 }
 
