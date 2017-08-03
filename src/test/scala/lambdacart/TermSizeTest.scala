@@ -12,39 +12,39 @@ class TermSizeTest extends FunSuite {
   type Z
 
   test("x => x") {
-    assert(dsl.parse[X, X](x => x).size == 1)
+    assert(τ[X, X](x => x).size == 1)
   }
 
   test("x => y => x ** y") {
-    assert(dsl.parse[X, Y, X**Y]((x, y) => x ** y).size == 94)
+    assert(τ[X, Y, X**Y]((x, y) => x ** y).size == 94)
   }
 
   test("x => y => y ** x") {
-    assert(dsl.parse[X, Y, Y**X]((x, y) => y ** x).size == 56)
+    assert(τ[X, Y, Y**X]((x, y) => y ** x).size == 56)
   }
 
   test("x => y => z => x ** (y ** z)") {
-    assert(dsl.parse[X, Y, Z, X**(Y**Z)]((x, y, z) => x ** (y ** z)).size == 343)
+    assert(τ[X, Y, Z, X**(Y**Z)]((x, y, z) => x ** (y ** z)).size == 343)
   }
 
   test("x => y => z => (x ** y) ** z") {
-    assert(dsl.parse[X, Y, Z, (X**Y)**Z]((x, y, z) => (x ** y) ** z).size == 461)
+    assert(τ[X, Y, Z, (X**Y)**Z]((x, y, z) => (x ** y) ** z).size == 461)
   }
 
   test("x => y => x") {
-    assert(dsl.parse[X, Y, X]((x, y) => x).size == 4)
+    assert(τ[X, Y, X]((x, y) => x).size == 4)
   }
 
   test("x => y => y") {
-    assert(dsl.parse[X, Y, Y]((x, y) => y).size == 4)
+    assert(τ[X, Y, Y]((x, y) => y).size == 4)
   }
 
   test("x => y => z => x") {
-    assert(dsl.parse[X, Y, Z, X]((x, y, z) => x).size == 45)
+    assert(τ[X, Y, Z, X]((x, y, z) => x).size == 45)
   }
 
   test("x => y => z => z") {
-    assert(dsl.parse[X, Y, Z, Z]((x, y, z) => z).size == 7)
+    assert(τ[X, Y, Z, Z]((x, y, z) => z).size == 7)
   }
 
   test("forLoop") {

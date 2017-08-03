@@ -16,7 +16,6 @@ sealed trait Term[:=>:[_, _], **[_, _], T, H[_, _], A] {
   type Var[X]           =      Term.Var[:=>:, **, T, H, X]
   type Obj[X]           =      Term.Obj[:=>:, **, T, H, X]
   type App[X, Y]        =      Term.App[:=>:, **, T, H, X, Y]
-  type Abs[X, Y]        =      Term.Abs[:=>:, **, T, H, X, Y]
   type Arr[X, Y]        =      Term.Arr[:=>:, **, T, H, X, Y]
   type Fst[X, Y]        =      Term.Fst[:=>:, **, T, H, X, Y]
   type Snd[X, Y]        =      Term.Snd[:=>:, **, T, H, X, Y]
@@ -28,11 +27,7 @@ sealed trait Term[:=>:[_, _], **[_, _], T, H[_, _], A] {
 
   type Visitor[R]       =   TermVisitor[:=>:, **, T, H, A, R]
 
-  private type Transformer = Visitor[τ[A]]
-
   def visit[Z](visitor: Visitor[Z]): Z
-
-  private def transform(tr: Transformer): τ[A] = visit(tr)
 
   private[Term] def coerce[B](implicit ev: A === B): τ[B] = ev.subst[τ](this)
   private[Term] implicit class LeibnizOps[X, Y](ev: X === Y) {
@@ -43,7 +38,6 @@ sealed trait Term[:=>:[_, _], **[_, _], T, H[_, _], A] {
   def size: Int = visit(new Visitor[Int] {
     def apply(a: Var[A]): Int = 1
     def apply[X](a: App[X,A]): Int = 1 + a.f.size + a.a.size
-    def apply[X, Y](a: Abs[X,Y])(implicit ev: (X :=>: Y) === A): Int = 1 + a.b.size
     def apply(a: Obj[A]): Int = 1
     def apply[X, Y, Z](a: Uncurry[X,Y,Z])(implicit ev: ===[:=>:[**[X,Y],Z],A]): Int = 1 + a.f.size
     def apply[X, Y, Z](a: Curry[X,Y,Z])(implicit ev: ===[:=>:[X,:=>:[Y,Z]],A]): Int = 1 + a.f.size
@@ -54,40 +48,6 @@ sealed trait Term[:=>:[_, _], **[_, _], T, H[_, _], A] {
     def apply[X, Y, Z](a: Compose[X,Y,Z])(implicit ev: ===[:=>:[X,Z],A]): Int = 1 + a.f.size + a.g.size
     def apply[X](a: Id[X])(implicit ev: ===[:=>:[X,X],A]): Int = 1
     def apply[X, Y](a: Arr[X,Y])(implicit ev: ===[:=>:[X,Y],A]): Int = 1
-  })
-
-  /** Abstraction elimination. Returns an equivalent term that contains no lambda abstractions.
-    * When `this` is a closed term, the result also contains no variables.
-    */
-  final def elimAbs: τ[A] = transform(new Transformer {
-
-    def apply[X, Y](a:      Arr[X,Y])(implicit ev: (X :=>: Y)      === A) = a.coerce
-    def apply[X]   (a:       Id[X])  (implicit ev: (X :=>: X)      === A) = a.coerce
-    def apply[X, Y](a:      Snd[X,Y])(implicit ev: ((X**Y) :=>: Y) === A) = a.coerce
-    def apply[X, Y](a:      Fst[X,Y])(implicit ev: ((X**Y) :=>: X) === A) = a.coerce
-    def apply[X   ](a: Terminal[X])  (implicit ev: (X :=>: T)      === A) = a.coerce
-    def apply      (a:      Var[A])                                       = a
-
-    def apply[X, Y, Z](a: Uncurry[X,Y,Z])(implicit ev: :=>:[**[X,Y],Z] === A) =
-      Uncurry(a.f.elimAbs).coerce
-
-    def apply[X, Y, Z](a: Curry[X,Y,Z])(implicit ev: :=>:[X,:=>:[Y,Z]] === A) =
-      Curry(a.f.elimAbs).coerce
-
-    def apply[X, Y, Z](a: Prod[X,Y,Z])(implicit ev: :=>:[X,**[Y,Z]] === A) =
-      Prod(a.f.elimAbs, a.g.elimAbs).coerce
-
-    def apply[X, Y, Z](a: Compose[X,Y,Z])(implicit ev: :=>:[X,Z] === A) =
-      Compose(a.f.elimAbs, a.g.elimAbs).coerce
-
-    def apply(a: Obj[A]) =
-      Obj(a.f.elimAbs)
-
-    def apply[X](a: App[X,A]) =
-      App(a.f.elimAbs, a.a.elimAbs)
-
-    def apply[X, Y](a: Abs[X,Y])(implicit ev: (X :=>: Y) === A) =
-      a.b.elimAbs.unapply(a.a).coerce
   })
 
   /** Returns `f` such that `f(x) = this` and `x` does not occur in `f`.
@@ -135,9 +95,6 @@ sealed trait Term[:=>:[_, _], **[_, _], T, H[_, _], A] {
     def apply[X](a: App[X,A]) =
       if(!a.f.containsVarOrApp(x)) andThen(a.a.unapply(x), a.f)
       else andThen(prod(a.f.unapply(x), a.a.unapply(x)), appA[:=>:, **, T, H, X, A])
-
-    def apply[X, Y](a: Abs[X,Y])(implicit ev: (X :=>: Y) === A) =
-      sys.error("Abstraction should have been eliminated first.")
   })
 
 
@@ -167,9 +124,6 @@ sealed trait Term[:=>:[_, _], **[_, _], T, H[_, _], A] {
       a.f.containsVarOrApp(v)
 
     def apply[X](a: App[X,A]) = true
-
-    def apply[X, Y](a: Abs[X,Y])(implicit ev: (X :=>: Y) === A) =
-      a.a == v || a.b.containsVarOrApp(v)
   })
 
   final def compile(implicit CC: CCC.AuxHI[:=>:, **, T]): A = visit(new Visitor[A] {
@@ -187,7 +141,6 @@ sealed trait Term[:=>:[_, _], **[_, _], T, H[_, _], A] {
     def apply(a: Obj[A]) = sys.error("Cannot compile Obj.")
     def apply(a: Var[A]) = sys.error("Cannot compile variable.")
     def apply[X](a: App[X,A]) = sys.error("Cannot compile function application.")
-    def apply[X, Y](a: Abs[X,Y])(implicit ev: (X :=>: Y) === A) = sys.error("Cannot compile lambda abstraction.")
   })
 
 
@@ -225,7 +178,6 @@ object Term {
 
   // Lambda operations (will be eliminated during compilation)
   def freshVar[:=>:[_, _], **[_, _], T, H[_, _], A]: Var[:=>:, **, T, H, A] = new Var
-  def abs[:=>:[_, _], **[_, _], T, H[_, _], A, B](a: Var[:=>:, **, T, H, A], b: Term[:=>:, **, T, H, B]): Term[:=>:, **, T, H, A :=>: B] = Abs(a, b)
   def app[:=>:[_, _], **[_, _], T, H[_, _], A, B](f: Term[:=>:, **, T, H, A :=>: B], a: Term[:=>:, **, T, H, A]): Term[:=>:, **, T, H, B] = App(f, a)
 
 
@@ -312,10 +264,6 @@ object Term {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
   }
 
-  case class Abs[:=>:[_, _], **[_, _], T, H[_, _], A, B](a: Term.Var[:=>:, **, T, H, A], b: Term[:=>:, **, T, H, B]) extends Term[:=>:, **, T, H, A :=>: B] {
-    def visit[R](visitor: Visitor[R]): R = visitor(this)
-  }
-
   case class App[:=>:[_, _], **[_, _], T, H[_, _], A, B](f: Term[:=>:, **, T, H, A :=>: B], a: Term[:=>:, **, T, H, A]) extends Term[:=>:, **, T, H, B] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
   }
@@ -342,7 +290,7 @@ object Term {
 
   def internalize[:=>:[_, _], **[_, _], T, H[_, _], A, B](f: Term[:=>:, **, T, H, A] => Term[:=>:, **, T, H, B]): Term[:=>:, **, T, H, A :=>: B] = {
     val v = Term.freshVar[:=>:, **, T, H, A]
-    Term.abs(v, f(v))
+    f(v).unapply(v)
   }
 
 }
@@ -359,7 +307,6 @@ trait TermVisitor[:=>:[_, _], **[_, _], T, H[_, _], A, R] {
   def apply[X]      (a:       Id[:=>:, **, T, H, X])      (implicit ev: (X :=>: X)        === A) : R
   def apply[X]      (a: Terminal[:=>:, **, T, H, X])      (implicit ev: (X :=>: T)        === A) : R
   def apply[X, Y]   (a:      Arr[:=>:, **, T, H, X, Y])   (implicit ev: (X :=>: Y)        === A) : R
-  def apply[X, Y]   (a:      Abs[:=>:, **, T, H, X, Y])   (implicit ev: (X :=>: Y)        === A) : R
   def apply[X]      (a:      App[:=>:, **, T, H, X, A])                                          : R
   def apply         (a:      Obj[:=>:, **, T, H, A])                                             : R
   def apply         (a:      Var[:=>:, **, T, H, A])                                             : R

@@ -39,30 +39,17 @@ trait Dsl {
   }
 
   def apply[A, R](φ: τ[A] => τ[R]): A :=>: R =
-    parse(φ).compile
+    τ(φ).compile
   def apply[A, B, R](φ: (τ[A], τ[B]) => τ[R]): A :=>: B :=>: R =
-    parse(φ).compile
+    τ(φ).compile
   def apply[A, B, C, R](φ: (τ[A], τ[B], τ[C]) => τ[R]): A :=>: B :=>: C :=>: R =
-    parse(φ).compile
+    τ(φ).compile
   def apply[A, B, C, D, R](φ: (τ[A], τ[B], τ[C], τ[D]) => τ[R]): A :=>: B :=>: C :=>: D :=>: R =
-    parse(φ).compile
+    τ(φ).compile
   def apply[A, B, C, D, E, R](φ: (τ[A], τ[B], τ[C], τ[D], τ[E]) => τ[R]): A :=>: B :=>: C :=>: D :=>: E :=>: R =
-    parse(φ).compile
+    τ(φ).compile
   def apply[A, B, C, D, E, F, R](φ: (τ[A], τ[B], τ[C], τ[D], τ[E], τ[F]) => τ[R]): A :=>: B :=>: C :=>: D :=>: E :=>: F :=>: R =
-    parse(φ).compile
-
-  def parse[A, R](φ: τ[A] => τ[R]): τ[A :=>: R] =
-    τ(φ).elimAbs
-  def parse[A, B, R](φ: (τ[A], τ[B]) => τ[R]): τ[A :=>: B :=>: R] =
-    τ(φ).elimAbs
-  def parse[A, B, C, R](φ: (τ[A], τ[B], τ[C]) => τ[R]): τ[A :=>: B :=>: C :=>: R] =
-    τ(φ).elimAbs
-  def parse[A, B, C, D, R](φ: (τ[A], τ[B], τ[C], τ[D]) => τ[R]): τ[A :=>: B :=>: C :=>: D :=>: R] =
-    τ(φ).elimAbs
-  def parse[A, B, C, D, E, R](φ: (τ[A], τ[B], τ[C], τ[D], τ[E]) => τ[R]): τ[A :=>: B :=>: C :=>: D :=>: E :=>: R] =
-    τ(φ).elimAbs
-  def parse[A, B, C, D, E, F, R](φ: (τ[A], τ[B], τ[C], τ[D], τ[E], τ[F]) => τ[R]): τ[A :=>: B :=>: C :=>: D :=>: E :=>: F :=>: R] =
-    τ(φ).elimAbs
+    τ(φ).compile
 
 
   implicit class ArrowSyntax[A, B](f: A :=>: B) {
