@@ -13,9 +13,8 @@ trait MyDsl extends ExtendedDsl { dsl =>
 
   def inc: Nat :=>: Nat
   def dec: Nat :=>: Maybe[Nat]
-  def zeroArrow: Unit :=>: Nat
 
-  def zero: τ[Nat] = Obj(zeroArrow)
+  def zero: τ[Nat]
   def one: τ[Nat] = inc(zero)
 
 
@@ -72,7 +71,7 @@ private[demo] object MyDslImpl extends MyDsl {
 
   type Unit = scala.Unit
 
-  val zeroArrow: Unit :=>: Nat = List(Zero)
+  val zero: τ[Nat] = arrObj(List(Zero))
 
   def doWhile[A, B]: A :=>: (A :=>: (A\/B)) :=>: B = List(Curried(List(While)))
 

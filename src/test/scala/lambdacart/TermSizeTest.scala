@@ -16,7 +16,7 @@ class TermSizeTest extends FunSuite {
   }
 
   test("x => y => x ** y") {
-    assert(τ[X, Y, X**Y]((x, y) => x ** y).size == 94)
+    assert(τ[X, Y, X**Y]((x, y) => x ** y).size == 44)
   }
 
   test("x => y => y ** x") {
@@ -24,11 +24,11 @@ class TermSizeTest extends FunSuite {
   }
 
   test("x => y => z => x ** (y ** z)") {
-    assert(τ[X, Y, Z, X**(Y**Z)]((x, y, z) => x ** (y ** z)).size == 343)
+    assert(τ[X, Y, Z, X**(Y**Z)]((x, y, z) => x ** (y ** z)).size == 213)
   }
 
   test("x => y => z => (x ** y) ** z") {
-    assert(τ[X, Y, Z, (X**Y)**Z]((x, y, z) => (x ** y) ** z).size == 461)
+    assert(τ[X, Y, Z, (X**Y)**Z]((x, y, z) => (x ** y) ** z).size == 169)
   }
 
   test("x => y => x") {
@@ -48,14 +48,14 @@ class TermSizeTest extends FunSuite {
   }
 
   test("forLoop") {
-    assert(sizeOf(forLoop[X]) == 6457)
+    assert(sizeOf(forLoop[X]) == 3622)
   }
 
   test("plus") {
-    assert(sizeOf(plus) == 6683)
+    assert(sizeOf(plus) == 3961)
   }
 
   test("times") {
-    assert(sizeOf(times) == 13364)
+    assert(sizeOf(times) == 7793)
   }
 }

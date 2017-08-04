@@ -30,26 +30,29 @@ trait Dsl {
   def τ[A, B, C, D, E, F, R](φ: (τ[A], τ[B], τ[C], τ[D], τ[E], τ[F]) => τ[R]): τ[A :=>: B :=>: C :=>: D :=>: E :=>: F :=>: R] =
     τ[A, B, C, D, E, F :=>: R]((a, b, c, d, e) => τ(f => φ(a, b, c, d, e, f)))
 
-  def Obj[A](f: Unit :=>: A): τ[A] =
-    Term.obj(arr[:=>:, **, Unit, Hom, Unit, A](f))
+  def obj[A](f: τ[Unit :=>: A]): τ[A] =
+    Term.obj(f)
+
+  def arrObj[A](f: Unit :=>: A): τ[A] =
+    obj(arr(f))
 
   def both[A, B, C](ab: τ[A**B])(f: τ[A] => τ[B] => τ[C]): τ[C] = {
-    val f1: τ[A :=>: B :=>: C] = τ((a: τ[A]) => τ(f(a)))
+    val f1: τ[A :=>: B :=>: C] = τ((a, b) => f(a)(b))
     app(uncurry(f1), ab)
   }
 
   def apply[A, R](φ: τ[A] => τ[R]): A :=>: R =
-    τ(φ).compile
+    compile(τ(φ))
   def apply[A, B, R](φ: (τ[A], τ[B]) => τ[R]): A :=>: B :=>: R =
-    τ(φ).compile
+    compile(τ(φ))
   def apply[A, B, C, R](φ: (τ[A], τ[B], τ[C]) => τ[R]): A :=>: B :=>: C :=>: R =
-    τ(φ).compile
+    compile(τ(φ))
   def apply[A, B, C, D, R](φ: (τ[A], τ[B], τ[C], τ[D]) => τ[R]): A :=>: B :=>: C :=>: D :=>: R =
-    τ(φ).compile
+    compile(τ(φ))
   def apply[A, B, C, D, E, R](φ: (τ[A], τ[B], τ[C], τ[D], τ[E]) => τ[R]): A :=>: B :=>: C :=>: D :=>: E :=>: R =
-    τ(φ).compile
+    compile(τ(φ))
   def apply[A, B, C, D, E, F, R](φ: (τ[A], τ[B], τ[C], τ[D], τ[E], τ[F]) => τ[R]): A :=>: B :=>: C :=>: D :=>: E :=>: F :=>: R =
-    τ(φ).compile
+    compile(τ(φ))
 
 
   implicit class ArrowSyntax[A, B](f: A :=>: B) {
@@ -58,7 +61,7 @@ trait Dsl {
   implicit class ArrowArrowSyntax[A, B, C](f: (A :=>: B) :=>: C) {
     def apply(g: A :=>: B): τ[C] = app(arr(f), arr(g))
     def apply(g: τ[A :=>: B]): τ[C] = app(arr(f), g)
-    def apply(g: τ[A] => τ[B]): τ[C] = app(arr(f), τ(g))
+    def apply(g: τ[A] => τ[B]): τ[C] = apply(τ(g))
   }
   implicit class ArrowTermSyntax[A, B](f: τ[A :=>: B]) {
     def apply(a: τ[A]): τ[B] = app(f, a)
@@ -66,7 +69,7 @@ trait Dsl {
   implicit class ArrowArrowTermSyntax[A, B, C](f: τ[(A :=>: B) :=>: C]) {
     def apply(g: A :=>: B): τ[C] = app(f, arr(g))
     def apply(g: τ[A :=>: B]): τ[C] = app(f, g)
-    def apply(g: τ[A] => τ[B]): τ[C] = app(f, τ(g))
+    def apply(g: τ[A] => τ[B]): τ[C] = apply(τ(g))
   }
   implicit class ProductSyntax[A, B](ab: τ[A**B]) {
     def _1: τ[A] = app(fst[:=>:, **, Unit, Hom, A, B], ab)
