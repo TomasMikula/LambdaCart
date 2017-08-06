@@ -97,7 +97,7 @@ object Term {
 
       def apply[X](a: App[X,A]) =
         if(!a.f.containsVar(v)) andThen(a.a.unapply(v), Term.code(a.f))
-        else andThen(prod(a.f.unapply(v), a.a.unapply(v)), appA[:=>:, **, T, H, X, A])
+        else andThen(prod(a.f.unapply(v), a.a.unapply(v)), eval[:=>:, **, T, H, X, A])
 
       def apply(a: Var[A]) =
         sameVar(a, v) match {
@@ -291,7 +291,7 @@ object Term {
   def pair[:=>:[_, _], **[_, _], T, H[_, _], A, B](a: DataTerm[:=>:, **, T, H, A], b: DataTerm[:=>:, **, T, H, B]): DataTerm[:=>:, **, T, H, A**B] =
     app(app(curry(id[:=>:, **, T, H, A**B]), a), b)
 
-  def appA[:=>:[_, _], **[_, _], T, H[_, _], A, B]: CodeTerm[:=>:, **, T, H, H[A, B] ** A, B] =
+  def eval[:=>:[_, _], **[_, _], T, H[_, _], A, B]: CodeTerm[:=>:, **, T, H, H[A, B] ** A, B] =
     uncurry(id[:=>:, **, T, H, H[A, B]])
 
   def assocR[:=>:[_, _], **[_, _], T, H[_, _], A, B, C]: CodeTerm[:=>:, **, T, H, ((A**B)**C), (A**(B**C))] = {
