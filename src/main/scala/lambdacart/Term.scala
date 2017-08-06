@@ -10,7 +10,6 @@ import scalaz.Leibniz.===
 sealed trait Term[:=>:[_, _], **[_, _], T, H[_, _], A] {
   import Term._
 
-  type τ[X]             =          Term[:=>:, **, T, H, X]
   type $[X]             =      DataTerm[:=>:, **, T, H, X]
   type φ[X, Y]          =      CodeTerm[:=>:, **, T, H, X, Y]
 
@@ -27,70 +26,30 @@ sealed trait Term[:=>:[_, _], **[_, _], T, H[_, _], A] {
   type Curry[X, Y, Z]   =    Term.Curry[:=>:, **, T, H, X, Y, Z]
   type Uncurry[X, Y, Z] =  Term.Uncurry[:=>:, **, T, H, X, Y, Z]
   type ConstVar[X, Y]   = Term.ConstVar[:=>:, **, T, H, X, Y]
-
-  type Visitor[R]       =   TermVisitor[:=>:, **, T, H, A, R]
-
-  def visit[Z](visitor: Visitor[Z]): Z
-
-  def size: Int = visit(new Visitor[Int] {
-    def apply(a: Var[A]): Int = 1
-    def apply[X](a: App[X,A]): Int = 1 + a.f.size + a.a.size
-    def apply(a: Obj[A]): Int = 1
-    def apply[X, Y, Z](a: Uncurry[X,Y,Z])(implicit ev: ===[:=>:[**[X,Y],Z],A]): Int = 1 + a.f.size
-    def apply[X, Y, Z](a: Curry[X,Y,Z])(implicit ev: ===[:=>:[X,H[Y,Z]],A]): Int = 1 + a.f.size
-    def apply[X](a: Terminal[X])(implicit ev: ===[:=>:[X,T],A]): Int = 1
-    def apply[X, Y, Z](a: Prod[X,Y,Z])(implicit ev: ===[:=>:[X,**[Y,Z]],A]): Int = 1 + a.f.size + a.g.size
-    def apply[X, Y](a: Snd[X,Y])(implicit ev: ===[:=>:[**[X,Y],Y],A]): Int = 1
-    def apply[X, Y](a: Fst[X,Y])(implicit ev: ===[:=>:[**[X,Y],X],A]): Int = 1
-    def apply[X, Y, Z](a: Compose[X,Y,Z])(implicit ev: ===[:=>:[X,Z],A]): Int = 1 + a.f.size + a.g.size
-    def apply[X](a: Id[X])(implicit ev: ===[:=>:[X,X],A]): Int = 1
-    def apply[X, Y](a: Arr[X,Y])(implicit ev: ===[:=>:[X,Y],A]): Int = 1
-    def apply[X, Y](a: ConstVar[X, Y])(implicit ev: (X :=>: Y) === A) = 2
-  })
-
-  private[Term] final def containsVar[V](v: Var[V]): Boolean = visit(new Visitor[Boolean] {
-
-    def apply[X, Y](a:      Arr[X,Y])(implicit ev: (X :=>: Y)      === A) = false
-    def apply[X]   (a:       Id[X])  (implicit ev: (X :=>: X)      === A) = false
-    def apply[X, Y](a:      Snd[X,Y])(implicit ev: ((X**Y) :=>: Y) === A) = false
-    def apply[X, Y](a:      Fst[X,Y])(implicit ev: ((X**Y) :=>: X) === A) = false
-    def apply[X   ](a: Terminal[X])  (implicit ev: (X :=>: T)      === A) = false
-
-    def apply(a: Var[A]) = a == v
-
-    def apply[X, Y, Z](a: Uncurry[X,Y,Z])(implicit ev: :=>:[**[X,Y],Z] === A) =
-      a.f.containsVar(v)
-
-    def apply[X, Y, Z](a: Curry[X,Y,Z])(implicit ev: :=>:[X,H[Y,Z]] === A) =
-      a.f.containsVar(v)
-
-    def apply[X, Y, Z](a: Prod[X,Y,Z])(implicit ev: :=>:[X,**[Y,Z]] === A) =
-      a.f.containsVar(v) || a.g.containsVar(v)
-
-    def apply[X, Y, Z](a: Compose[X,Y,Z])(implicit ev: :=>:[X,Z] === A) =
-      a.f.containsVar(v) || a.g.containsVar(v)
-
-    def apply[X, Y](a: ConstVar[X, Y])(implicit ev: (X :=>: Y) === A) =
-      a.a.containsVar(v)
-
-    def apply(a: Obj[A]) =
-      a.f.containsVar(v)
-
-    def apply[X](a: App[X,A]) =
-      a.f.containsVar(v) || a.a.containsVar(v)
-  })
 }
 
 object Term {
 
   sealed trait DataTerm[:=>:[_, _], **[_, _], T, H[_, _], A] extends Term[:=>:, **, T, H, A] {
-    type DataVisitor[R] = DataTerm.Visitor[:=>:, **, T, H, A, R]
+    type Visitor[R] = DataTerm.Visitor[:=>:, **, T, H, A, R]
 
-    def visit[R](v: DataVisitor[R]): R
+    def visit[R](v: Visitor[R]): R
+
+    def size: Int = visit(new Visitor[Int] {
+      def apply(a: Var[A]): Int = 1
+      def apply[X](a: App[X,A]): Int = 1 + a.f.size + a.a.size
+      def apply(a: Obj[A]): Int = 1
+    })
+
+    def containsVar[V](v: Var[V]): Boolean = visit(new Visitor[Boolean] {
+      def apply(a: Var[A]) = a == v
+      def apply(a: Obj[A]) = a.f.containsVar(v)
+      def apply[X](a: App[X,A]) = a.f.containsVar(v) || a.a.containsVar(v)
+    })
 
     /** Returns `f` such that `f(x) = this` and `x` does not occur in `f`.
       */
-    def unapply[V](v: Var[V]): φ[V, A] = visit(new DataVisitor[φ[V, A]] {
+    def unapply[V](v: Var[V]): φ[V, A] = visit(new Visitor[φ[V, A]] {
       def apply(a: Obj[A]) =
         if(a.f.containsVar(v)) compose(uncurry(a.f.unapply(v)), prod(id, terminal))
         else compose(a.f, terminal)
@@ -106,8 +65,8 @@ object Term {
         }
     })
 
-    def code: CodeTerm[:=>:, **, T, H, T, A] =
-      visit(new DataTerm.Visitor[:=>:, **, T, H, A, CodeTerm[:=>:, **, T, H, T, A]] {
+    def code: φ[T, A] =
+      visit(new Visitor[φ[T, A]] {
         def apply   (a: Obj[A])   = a.f
         def apply   (a: Var[A])   = constVar(a)
         def apply[X](a: App[X, A])= compose(Term.code(a.f), a.a.code)
@@ -136,9 +95,9 @@ object Term {
   }
 
   sealed trait CodeTerm[:=>:[_, _], **[_, _], T, H[_, _], A, B] extends Term[:=>:, **, T, H, A :=>: B] {
-    type CodeVisitor[R] = CodeTerm.Visitor[:=>:, **, T, H, A, B, R]
+    type Visitor[R] = CodeTerm.Visitor[:=>:, **, T, H, A, B, R]
 
-    def visit[R](v: CodeVisitor[R]): R
+    def visit[R](v: Visitor[R]): R
 
     def const[Z]: φ[Z, H[A, B]] = Term.const(this)
 
@@ -151,7 +110,33 @@ object Term {
     def castB[Y](implicit ev: B === Y): CodeTerm[:=>:, **, T, H, A, Y] =
       ev.subst[CodeTerm[:=>:, **, T, H, A, ?]](this)
 
-    def unapply[V](v: Var[V]): φ[V, H[A, B]] = visit(new CodeVisitor[φ[V, H[A, B]]] {
+    def size: Int = visit(new Visitor[Int] {
+      def apply[Y, Z](a:    Curry[A, Y, Z])(implicit ev:  H[Y, Z] === B) = 1 + a.f.size
+      def apply[X, Y](a:  Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) = 1 + a.f.size
+      def apply[Y]   (a:  Compose[A, Y, B])                              = 1 + a.f.size + a.g.size
+      def apply[Y, Z](a:     Prod[A, Y, Z])(implicit ev:   (Y**Z) === B) = 1 + a.f.size + a.g.size
+      def apply[Y]   (a:      Fst[B, Y])   (implicit ev:   (B**Y) === A) = 1
+      def apply[X]   (a:      Snd[X, B])   (implicit ev:   (X**B) === A) = 1
+      def apply      (a:       Id[A])      (implicit ev:        A === B) = 1
+      def apply      (a: Terminal[A])      (implicit ev:        T === B) = 1
+      def apply      (a:      Arr[A, B])                                 = 1
+      def apply      (a: ConstVar[A, B])                                 = 2
+    })
+
+    def containsVar[V](v: Var[V]): Boolean = visit(new Visitor[Boolean] {
+      def apply[Y, Z](a:    Curry[A, Y, Z])(implicit ev:  H[Y, Z] === B) = a.f.containsVar(v)
+      def apply[X, Y](a:  Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) = a.f.containsVar(v)
+      def apply[Y]   (a:  Compose[A, Y, B])                              = a.f.containsVar(v) || a.g.containsVar(v)
+      def apply[Y, Z](a:     Prod[A, Y, Z])(implicit ev:   (Y**Z) === B) = a.f.containsVar(v) || a.g.containsVar(v)
+      def apply[Y]   (a:      Fst[B, Y])   (implicit ev:   (B**Y) === A) = false
+      def apply[X]   (a:      Snd[X, B])   (implicit ev:   (X**B) === A) = false
+      def apply      (a:       Id[A])      (implicit ev:        A === B) = false
+      def apply      (a: Terminal[A])      (implicit ev:        T === B) = false
+      def apply      (a:      Arr[A, B])                                 = false
+      def apply      (a: ConstVar[A, B])                                 = a.a.containsVar(v)
+    })
+
+    def unapply[V](v: Var[V]): φ[V, H[A, B]] = visit(new Visitor[φ[V, H[A, B]]] {
       def apply   (a:      Arr[A, B])                            = a         .const[V]
       def apply   (a:       Id[A]   )(implicit ev:      A === B) = a.castB[B].const[V]
       def apply[Y](a:      Fst[B, Y])(implicit ev: (B**Y) === A) = a.castA[A].const[V]
@@ -190,7 +175,7 @@ object Term {
         }
     })
 
-    final def compile(implicit C: CCC.Aux[:=>:, **, T, H]): A :=>: B = visit(new CodeVisitor[A :=>:B] {
+    final def compile(implicit C: CCC.Aux[:=>:, **, T, H]): A :=>: B = visit(new Visitor[A :=>:B] {
       def apply[Y, Z](a:    Curry[A, Y, Z])(implicit ev:  H[Y, Z] === B) = ev.lift[A :=>: ?](C.curry(a.f.compile))
       def apply[X, Y](a:  Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) = ev.lift[? :=>: B](C.uncurry(a.f.compile))
       def apply[Y]   (a:  Compose[A, Y, B])                              = C.compose(a.f.compile, a.g.compile)
@@ -316,67 +301,54 @@ object Term {
 
   case class Arr[:=>:[_, _], **[_, _], T, H[_, _], A, B](f: A :=>: B) extends CodeTerm[:=>:, **, T, H, A, B] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
-    def visit[R](visitor: CodeVisitor[R]): R = visitor(this)
   }
 
   case class Id[:=>:[_, _], **[_, _], T, H[_, _], A]() extends CodeTerm[:=>:, **, T, H, A, A] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
-    def visit[R](visitor: CodeVisitor[R]): R = visitor(this)
   }
 
   case class Compose[:=>:[_, _], **[_, _], T, H[_, _], A, B, C](f: CodeTerm[:=>:, **, T, H, B, C], g: CodeTerm[:=>:, **, T, H, A, B]) extends CodeTerm[:=>:, **, T, H, A, C] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
-    def visit[R](visitor: CodeVisitor[R]): R = visitor(this)
   }
 
   case class Fst[:=>:[_, _], **[_, _], T, H[_, _], A, B]() extends CodeTerm[:=>:, **, T, H, (A**B), A] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
-    def visit[R](visitor: CodeVisitor[R]): R = visitor(this)
   }
 
   case class Snd[:=>:[_, _], **[_, _], T, H[_, _], A, B]() extends CodeTerm[:=>:, **, T, H, (A**B), B] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
-    def visit[R](visitor: CodeVisitor[R]): R = visitor(this)
   }
 
   case class Prod[:=>:[_, _], **[_, _], T, H[_, _], A, B, C](f: CodeTerm[:=>:, **, T, H, A, B], g: CodeTerm[:=>:, **, T, H, A, C]) extends CodeTerm[:=>:, **, T, H, A, (B**C)] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
-    def visit[R](visitor: CodeVisitor[R]): R = visitor(this)
   }
 
   case class Terminal[:=>:[_, _], **[_, _], T, H[_, _], A]() extends CodeTerm[:=>:, **, T, H, A, T] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
-    def visit[R](visitor: CodeVisitor[R]): R = visitor(this)
   }
 
   case class Curry[:=>:[_, _], **[_, _], T, H[_, _], A, B, C](f: CodeTerm[:=>:, **, T, H, (A**B), C]) extends CodeTerm[:=>:, **, T, H, A, H[B, C]] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
-    def visit[R](visitor: CodeVisitor[R]): R = visitor(this)
   }
 
   case class Uncurry[:=>:[_, _], **[_, _], T, H[_, _], A, B, C](f: CodeTerm[:=>:, **, T, H, A, H[B, C]]) extends CodeTerm[:=>:, **, T, H, (A**B), C] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
-    def visit[R](visitor: CodeVisitor[R]): R = visitor(this)
   }
 
   case class ConstVar[:=>:[_, _], **[_, _], T, H[_, _], Z, A](a: Term.Var[:=>:, **, T, H, A]) extends CodeTerm[:=>:, **, T, H, Z, A] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
-    def visit[R](visitor: CodeVisitor[R]): R = visitor(this)
   }
 
   case class Obj[:=>:[_, _], **[_, _], T, H[_, _], A](f: CodeTerm[:=>:, **, T, H, T, A]) extends DataTerm[:=>:, **, T, H, A] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
-    def visit[R](visitor: DataVisitor[R]): R = visitor(this)
   }
 
   case class App[:=>:[_, _], **[_, _], T, H[_, _], A, B](f: DataTerm[:=>:, **, T, H, H[A, B]], a: Term.Var[:=>:, **, T, H, A]) extends DataTerm[:=>:, **, T, H, B] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
-    def visit[R](visitor: DataVisitor[R]): R = visitor(this)
   }
 
   class Var[:=>:[_, _], **[_, _], T, H[_, _], A] private[Term]() extends DataTerm[:=>:, **, T, H, A] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
-    def visit[R](visitor: DataVisitor[R]): R = visitor(this)
   }
 
   def sameVar[:=>:[_, _], **[_, _], T, H[_, _], X, Y](x: Var[:=>:, **, T, H, X], y: Var[:=>:, **, T, H, Y]): Option[X === Y] =
@@ -391,23 +363,4 @@ object Term {
   def compile[:=>:[_, _], **[_, _], T, H[_, _], A, B](f: CodeTerm[:=>:, **, T, H, A, B])(implicit C: CCC.Aux[:=>:, **, T, H]): A :=>: B =
     f.compile
 
-}
-
-trait TermVisitor[:=>:[_, _], **[_, _], T, H[_, _], A, R] {
-  import Term._
-
-  def apply[X, Y, Z](a:    Curry[:=>:, **, T, H, X, Y, Z])(implicit ev: (X :=>: H[Y, Z])  === A) : R
-  def apply[X, Y, Z](a:  Uncurry[:=>:, **, T, H, X, Y, Z])(implicit ev: ((X ** Y) :=>: Z) === A) : R
-  def apply[X, Y, Z](a:  Compose[:=>:, **, T, H, X, Y, Z])(implicit ev: (X :=>: Z)        === A) : R
-  def apply[X, Y, Z](a:     Prod[:=>:, **, T, H, X, Y, Z])(implicit ev: (X :=>: (Y**Z))   === A) : R
-  def apply[X, Y]   (a:      Fst[:=>:, **, T, H, X, Y])   (implicit ev: ((X**Y) :=>: X)   === A) : R
-  def apply[X, Y]   (a:      Snd[:=>:, **, T, H, X, Y])   (implicit ev: ((X**Y) :=>: Y)   === A) : R
-  def apply[X]      (a:       Id[:=>:, **, T, H, X])      (implicit ev: (X :=>: X)        === A) : R
-  def apply[X]      (a: Terminal[:=>:, **, T, H, X])      (implicit ev: (X :=>: T)        === A) : R
-  def apply[X, Y]   (a:      Arr[:=>:, **, T, H, X, Y])   (implicit ev: (X :=>: Y)        === A) : R
-  def apply[X, Y]   (a: ConstVar[:=>:, **, T, H, X, Y])   (implicit ev: (X :=>: Y)        === A) : R
-
-  def apply[X]      (a:      App[:=>:, **, T, H, X, A])                                          : R
-  def apply         (a:      Obj[:=>:, **, T, H, A])                                             : R
-  def apply         (a:      Var[:=>:, **, T, H, A])                                             : R
 }
