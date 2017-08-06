@@ -14,15 +14,15 @@ trait MyDsl extends ExtendedDsl { dsl =>
   def inc: Nat :=>: Nat
   def dec: Nat :=>: Maybe[Nat]
 
-  def zero: τ[Nat]
-  def one: τ[Nat] = inc(zero)
+  def zero: $[Nat]
+  def one: $[Nat] = inc(zero)
 
 
   //                   # of iterations
   //                  /       initial value
   //                 /       /          iteration (loop body)
   //                /       /          / 
-  def forLoop[A]: Nat :=>: A :=>: (A :=>: A) :=>: A =
+  def forLoop[A]: Nat :=>: A :->: (A :->: A) :->: A =
     dsl { (n, a, f) =>
       doWhile[A**Nat, A]( a**n )( both(_) { a => n =>
         maybe[Nat, (A**Nat)\/A](dec(n)) (
@@ -32,12 +32,12 @@ trait MyDsl extends ExtendedDsl { dsl =>
     }
 
 
-  def plus: Nat :=>: Nat :=>: Nat =
+  def plus: Nat :=>: Nat :->: Nat =
     dsl { (a, b) =>
       forLoop(a)(b)(inc)
     }
   
-  def times: Nat :=>: Nat :=>: Nat =
+  def times: Nat :=>: Nat :->: Nat =
     dsl { (a, b) =>
       forLoop(a)(zero)(plus(b))
     }
@@ -47,7 +47,7 @@ trait MyDsl extends ExtendedDsl { dsl =>
 
   type Native[A]
   def exec[A, B](a: Native[A])(f: A :=>: B): Native[B]
-  def exec[A, B, C](a: Native[A], b: Native[B])(f: A :=>: B :=>: C): Native[C]
+  def exec[A, B, C](a: Native[A], b: Native[B])(f: A :=>: B :->: C): Native[C]
   def encodeInt(i: Int): Native[Nat]
   def decodeInt(n: Native[Nat]): Int
 
@@ -71,7 +71,7 @@ private[demo] object MyDslImpl extends MyDsl {
 
   type Unit = scala.Unit
 
-  val zero: τ[Nat] = arrObj(List(Zero))
+  val zero: $[Nat] = arrObj(List(Zero))
 
   def doWhile[A, B]: A :=>: (A :=>: (A\/B)) :=>: B = List(Curried(List(While)))
 
@@ -93,16 +93,19 @@ private[demo] object MyDslImpl extends MyDsl {
 
   def decodeInt(n: Native[Nat]): Int = n
 
-  def sizeOf[A, B](f: A :=>: B): Int = f match {
-    case i :: is => sizeOf(i) + sizeOf(is)
-    case Nil     => 0
-  }
+  def sizeOf[A, B](f: A :=>: B): Int = {
+    @tailrec def go(sum: Int, is: List[Inst]): Int =
+      is match {
+        case i :: is => i match {
+          case Iter(f)        => go(sum + 1, f ::: is)
+          case Curried(f)     => go(sum + 1, f ::: is)
+          case Papplied(f, a) => go(sum + 2, f ::: is) // XXX: should implement sizeOf(a)
+          case _              => go(sum + 1,       is)
+        }
+        case Nil     => sum
+      }
 
-  private def sizeOf(i: Inst): Int = i match {
-    case Iter(f)        => 1 + sizeOf(f)
-    case Curried(f)     => 1 + sizeOf(f)
-    case Papplied(f, a) => 1 + sizeOf(f) + 1 // XXX: should implement sizeOf(a)
-    case _              => 1
+    go(0, f)
   }
 
   sealed abstract class Inst
@@ -135,7 +138,7 @@ private[demo] object MyDslImpl extends MyDsl {
     stack.head.asInstanceOf[B]
   }
 
-  def exec[A, B, C](a: Native[A], b: Native[B])(f: A :=>: B :=>: C): Native[C] = {
+  def exec[A, B, C](a: Native[A], b: Native[B])(f: A :=>: B :->: C): Native[C] = {
     val stack1 = execStack(List(a, b), f)
 
     assert(stack1.size == 2)
@@ -183,10 +186,10 @@ private[demo] object MyDslImpl extends MyDsl {
         stack
     }
 
-  implicit def CC: CCC.AuxHI[:=>:, **, Unit] = new CCC[:=>:] {
+  implicit def ccc: CCC.Aux[:=>:, **, Unit, Hom] = new CCC[:=>:] {
     type **[A, B] = MyDslImpl.**[A, B]
     type Unit = MyDslImpl.Unit
-    type Hom[A, B] = A :=>: B
+    type Hom[A, B] = MyDslImpl.Hom[A, B]
 
     def id[A]: A :=>: A = List()
     def compose[A, B, C](f: B :=>: C, g: A :=>: B): A :=>: C = g ::: f

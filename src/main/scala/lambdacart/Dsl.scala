@@ -7,73 +7,87 @@ trait Dsl {
   type **[A, B]
   type Unit
   type Hom[A, B]
+  type :->:[A, B] = Hom[A, B]
 
-  type τ[A] = Term[:=>:, **, Unit, Hom, A]
+  type $[A]    = DataTerm[:=>:, **, Unit, Hom, A]
+  type φ[A, B] = CodeTerm[:=>:, **, Unit, Hom, A, B]
 
-  implicit def CC: CCC.AuxHI[:=>:, **, Unit]
+  implicit def ccc: CCC.Aux[:=>:, **, Unit, Hom]
 
-  def τ[A, R](φ: τ[A] => τ[R]): τ[A :=>: R] =
-    internalize(φ)
+  def φ[A, R](f: $[A] => $[R]): φ[A, R] =
+    internalize(f)
 
-  def τ[A, B, R](φ: (τ[A], τ[B]) => τ[R]): τ[A :=>: B :=>: R] =
-    τ[A, B :=>: R](a => τ(b => φ(a, b)))
+  def φ[A, B, R](f: ($[A], $[B]) => $[R]): φ[A, B :->: R] =
+    φ(a => φ[B, R](f(a, _)).data)
 
-  def τ[A, B, C, R](φ: (τ[A], τ[B], τ[C]) => τ[R]): τ[A :=>: B :=>: C :=>: R] =
-    τ[A, B, C :=>: R]((a, b) => τ(c => φ(a, b, c)))
+  def φ[A, B, C, R](f: ($[A], $[B], $[C]) => $[R]): φ[A, B :->: C :->: R] =
+    φ((a, b) => φ[C, R](f(a, b, _)).data)
 
-  def τ[A, B, C, D, R](φ: (τ[A], τ[B], τ[C], τ[D]) => τ[R]): τ[A :=>: B :=>: C :=>: D :=>: R] =
-    τ[A, B, C, D :=>: R]((a, b, c) => τ(d => φ(a, b, c, d)))
+  def φ[A, B, C, D, R](f: ($[A], $[B], $[C], $[D]) => $[R]): φ[A, B :->: C :->: D :->: R] =
+    φ((a, b, c) => φ[D, R](f(a, b, c, _)).data)
 
-  def τ[A, B, C, D, E, R](φ: (τ[A], τ[B], τ[C], τ[D], τ[E]) => τ[R]): τ[A :=>: B :=>: C :=>: D :=>: E :=>: R] =
-    τ[A, B, C, D, E :=>: R]((a, b, c, d) => τ(e => φ(a, b, c, d, e)))
+  def φ[A, B, C, D, E, R](f: ($[A], $[B], $[C], $[D], $[E]) => $[R]): φ[A, B :->: C :->: D :->: E :->: R] =
+    φ((a, b, c, d) => φ[E, R](f(a, b, c, d, _)).data)
 
-  def τ[A, B, C, D, E, F, R](φ: (τ[A], τ[B], τ[C], τ[D], τ[E], τ[F]) => τ[R]): τ[A :=>: B :=>: C :=>: D :=>: E :=>: F :=>: R] =
-    τ[A, B, C, D, E, F :=>: R]((a, b, c, d, e) => τ(f => φ(a, b, c, d, e, f)))
+  def φ[A, B, C, D, E, F, R](f: ($[A], $[B], $[C], $[D], $[E], $[F]) => $[R]): φ[A, B :->: C :->: D :->: E :->: F :->: R] =
+    φ((a, b, c, d, e) => φ[F, R](f(a, b, c, d, e, _)).data)
 
-  def obj[A](f: τ[Unit :=>: A]): τ[A] =
+  def obj[A](f: φ[Unit, A]): $[A] =
     Term.obj(f)
 
-  def arrObj[A](f: Unit :=>: A): τ[A] =
+  def arrObj[A](f: Unit :=>: A): $[A] =
     obj(arr(f))
 
-  def both[A, B, C](ab: τ[A**B])(f: τ[A] => τ[B] => τ[C]): τ[C] = {
-    val f1: τ[A :=>: B :=>: C] = τ((a, b) => f(a)(b))
+  def both[A, B, C](ab: $[A**B])(f: $[A] => $[B] => $[C]): $[C] = {
+    val f1: φ[A, B :->: C] = φ((a, b) => f(a)(b))
     app(uncurry(f1), ab)
   }
 
-  def apply[A, R](φ: τ[A] => τ[R]): A :=>: R =
-    compile(τ(φ))
-  def apply[A, B, R](φ: (τ[A], τ[B]) => τ[R]): A :=>: B :=>: R =
-    compile(τ(φ))
-  def apply[A, B, C, R](φ: (τ[A], τ[B], τ[C]) => τ[R]): A :=>: B :=>: C :=>: R =
-    compile(τ(φ))
-  def apply[A, B, C, D, R](φ: (τ[A], τ[B], τ[C], τ[D]) => τ[R]): A :=>: B :=>: C :=>: D :=>: R =
-    compile(τ(φ))
-  def apply[A, B, C, D, E, R](φ: (τ[A], τ[B], τ[C], τ[D], τ[E]) => τ[R]): A :=>: B :=>: C :=>: D :=>: E :=>: R =
-    compile(τ(φ))
-  def apply[A, B, C, D, E, F, R](φ: (τ[A], τ[B], τ[C], τ[D], τ[E], τ[F]) => τ[R]): A :=>: B :=>: C :=>: D :=>: E :=>: F :=>: R =
-    compile(τ(φ))
+  def apply[A, R](f: $[A] => $[R]): A :=>: R =
+    compile(φ(f))
+  def apply[A, B, R](f: ($[A], $[B]) => $[R]): A :=>: B :->: R =
+    compile(φ(f))
+  def apply[A, B, C, R](f: ($[A], $[B], $[C]) => $[R]): A :=>: B :->: C :->: R =
+    compile(φ(f))
+  def apply[A, B, C, D, R](f: ($[A], $[B], $[C], $[D]) => $[R]): A :=>: B :->: C :->: D :->: R =
+    compile(φ(f))
+  def apply[A, B, C, D, E, R](f: ($[A], $[B], $[C], $[D], $[E]) => $[R]): A :=>: B :->: C :->: D :->: E :->: R =
+    compile(φ(f))
+  def apply[A, B, C, D, E, F, R](f: ($[A], $[B], $[C], $[D], $[E], $[F]) => $[R]): A :=>: B :->: C :->: D :->: E :->: F :->: R =
+    compile(φ(f))
 
 
   implicit class ArrowSyntax[A, B](f: A :=>: B) {
-    def apply(a: τ[A]): τ[B] = app(arr(f), a)
+    def apply(a: $[A]): $[B] = app(arr[:=>:, **, Unit, Hom, A, B](f), a)
   }
-  implicit class ArrowArrowSyntax[A, B, C](f: (A :=>: B) :=>: C) {
-    def apply(g: A :=>: B): τ[C] = app(arr(f), arr(g))
-    def apply(g: τ[A :=>: B]): τ[C] = app(arr(f), g)
-    def apply(g: τ[A] => τ[B]): τ[C] = apply(τ(g))
+  implicit class CodeTermSyntax[A, B](f: φ[A, B]) {
+    def apply(a: $[A]): $[B] = app(f, a)
   }
-  implicit class ArrowTermSyntax[A, B](f: τ[A :=>: B]) {
-    def apply(a: τ[A]): τ[B] = app(f, a)
+  implicit class HomSyntax[A, B](f: $[A :->: B]) {
+    def apply(a: $[A]): $[B] = app(f, a)
   }
-  implicit class ArrowArrowTermSyntax[A, B, C](f: τ[(A :=>: B) :=>: C]) {
-    def apply(g: A :=>: B): τ[C] = app(f, arr(g))
-    def apply(g: τ[A :=>: B]): τ[C] = app(f, g)
-    def apply(g: τ[A] => τ[B]): τ[C] = apply(τ(g))
+  implicit class HomArrowSyntax[A, B, C](f: (A :->: B) :=>: C) {
+    def apply(g: A :=>: B): $[C] = this(arr[:=>:, **, Unit, Hom, A, B](g))
+    def apply(g: φ[A, B]): $[C] = app(arr[:=>:, **, Unit, Hom, A :->: B, C](f), g.data)
+    def apply(g: $[A] => $[B]): $[C] = apply(φ(g))
   }
-  implicit class ProductSyntax[A, B](ab: τ[A**B]) {
-    def _1: τ[A] = app(fst[:=>:, **, Unit, Hom, A, B], ab)
-    def _2: τ[B] = app(snd[:=>:, **, Unit, Hom, A, B], ab)
+  implicit class HomCodeTermSyntax[A, B, C](f: φ[A :->: B, C]) {
+    def apply(g: A :=>: B): $[C] = this(arr[:=>:, **, Unit, Hom, A, B](g))
+    def apply(g: φ[A, B]): $[C] = app(f, g.data)
+    def apply(g: $[A] => $[B]): $[C] = apply(φ(g))
+  }
+  implicit class HomHomSyntax[A, B, C](f: $[Hom[A :->: B, C]]) {
+    def apply(g: A :=>: B): $[C] = this(arr[:=>:, **, Unit, Hom, A, B](g))
+    def apply(g: φ[A, B]): $[C] = app(f, g.data)
+    def apply(g: $[A] => $[B]): $[C] = apply(φ(g))
+
+    // This one should be covered by HomSyntax[A :->: B, C](f).apply(g),
+    // but isn't ¯\_(ツ)_/¯
+    def apply(g: $[A :->: B]): $[C] = app(f, g)
+  }
+  implicit class ProductSyntax[A, B](ab: $[A**B]) {
+    def _1: $[A] = app(fst[:=>:, **, Unit, Hom, A, B], ab)
+    def _2: $[B] = app(snd[:=>:, **, Unit, Hom, A, B], ab)
   }
 }
 
@@ -86,13 +100,13 @@ trait ExtendedDsl extends Dsl {
   type \/[A, B]
   def -\/[A, B]: A :=>: (A\/B)
   def \/-[A, B]: B :=>: (A\/B)
-  def either[A, B, C]: (A \/ B) :=>: (A :=>: C) :=>: (B :=>: C) :=>: C
+  def either[A, B, C]: (A \/ B) :=>: (A :->: C) :->: (B :->: C) :->: C
 
   // some special sum types
   type Maybe[A] = Unit \/ A
   type Bool = Unit \/ Unit
-  def maybe[A, B]: Maybe[A] :=>: (Unit :=>: B) :=>: (A :=>: B) :=>: B = either[Unit, A, B]
-  def ifThenElse[A]: Bool :=>: (Unit :=>: A) :=>: (Unit :=>: A) :=>: A = either[Unit, Unit, A]
+  def maybe[A, B]: Maybe[A] :=>: (Unit :->: B) :->: (A :->: B) :->: B = either[Unit, A, B]
+  def ifThenElse[A]: Bool :=>: (Unit :->: A) :->: (Unit :->: A) :->: A = either[Unit, Unit, A]
 
   // primitives for forming recursive types
   type Fix[F[_]]
@@ -108,7 +122,7 @@ trait ExtendedDsl extends Dsl {
   //
   //                   initial value
   //                  /
-  def doWhile[A, B]: A :=>: (A :=>: (A\/B)) :=>: B
+  def doWhile[A, B]: A :=>: (A :->: (A\/B)) :->: B
   //                              \
   //                               iteration (apply until it returns a B)
 }
