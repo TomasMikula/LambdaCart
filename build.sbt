@@ -8,6 +8,7 @@ scalaVersion := "2.12.3"
 
 autoCompilerPlugins := true
 addCompilerPlugin("org.spire-math" % "kind-projector" % "0.9.4" cross CrossVersion.binary)
+addCompilerPlugin("com.github.tomasmikula" % "pascal" % "0.1" cross CrossVersion.binary)
 
 scalacOptions ++= Seq(
   "-language:higherKinds",

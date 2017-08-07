@@ -1,5 +1,6 @@
 package lambdacart
 
+import lambdacart.util.LeibnizOps
 import scalaz.Leibniz
 import scalaz.Leibniz.===
 
@@ -209,10 +210,6 @@ object Term {
       def apply      (a:      Arr[:=>:, **, T, H, A, B])                                 : R
       def apply      (a: ConstVar[:=>:, **, T, H, A, B])                                 : R
     }
-  }
-
-  implicit class LeibnizOps[X, Y](ev: X === Y) {
-    def lift[F[_]]: F[X] === F[Y] = ev.subst[λ[α => F[X] === F[α]]](Leibniz.refl)
   }
 
   // wrap primitive arrow
