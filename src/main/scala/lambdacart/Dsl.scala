@@ -1,7 +1,8 @@
 package lambdacart
 
 trait Dsl {
-  import Term._
+  import CodeTerm._
+  import DataTerm._
 
   type :=>:[A, B]
   type **[A, B]
@@ -33,7 +34,7 @@ trait Dsl {
     φ((a, b, c, d, e) => φ[F, R](f(a, b, c, d, e, _)).data)
 
   def obj[A](f: φ[Unit, A]): $[A] =
-    Term.obj(f)
+    DataTerm.obj(f)
 
   def arrObj[A](f: Unit :=>: A): $[A] =
     obj(arr(f))
@@ -44,17 +45,17 @@ trait Dsl {
   }
 
   def apply[A, R](f: $[A] => $[R]): A :=>: R =
-    compile(φ(f))
+    φ(f).compile
   def apply[A, B, R](f: ($[A], $[B]) => $[R]): A :=>: B :->: R =
-    compile(φ(f))
+    φ(f).compile
   def apply[A, B, C, R](f: ($[A], $[B], $[C]) => $[R]): A :=>: B :->: C :->: R =
-    compile(φ(f))
+    φ(f).compile
   def apply[A, B, C, D, R](f: ($[A], $[B], $[C], $[D]) => $[R]): A :=>: B :->: C :->: D :->: R =
-    compile(φ(f))
+    φ(f).compile
   def apply[A, B, C, D, E, R](f: ($[A], $[B], $[C], $[D], $[E]) => $[R]): A :=>: B :->: C :->: D :->: E :->: R =
-    compile(φ(f))
+    φ(f).compile
   def apply[A, B, C, D, E, F, R](f: ($[A], $[B], $[C], $[D], $[E], $[F]) => $[R]): A :=>: B :->: C :->: D :->: E :->: F :->: R =
-    compile(φ(f))
+    φ(f).compile
 
 
   implicit class ArrowSyntax[A, B](f: A :=>: B) {
