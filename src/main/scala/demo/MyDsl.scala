@@ -71,7 +71,7 @@ private[demo] object MyDslImpl extends MyDsl {
 
   type Unit = scala.Unit
 
-  val zero: $[Nat] = arrObj(List(Zero))
+  val zero: $[Nat] = obj(List(Zero))
 
   def doWhile[A, B]: A :=>: (A :=>: (A\/B)) :=>: B = List(Curried(List(While)))
 

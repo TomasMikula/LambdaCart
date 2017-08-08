@@ -1,6 +1,6 @@
 package lambdacart
 
-trait Dsl {
+trait Dsl extends Terms {
   import CodeTerm._
   import DataTerm._
 
@@ -10,8 +10,8 @@ trait Dsl {
   type Hom[A, B]
   type :->:[A, B] = Hom[A, B]
 
-  type $[A]    = DataTerm[:=>:, **, Unit, Hom, A]
-  type φ[A, B] = CodeTerm[:=>:, **, Unit, Hom, A, B]
+  type $[A]    = DataTerm[A]
+  type φ[A, B] = CodeTerm[A, B]
 
   implicit def ccc: CCC.Aux[:=>:, **, Unit, Hom]
 
@@ -33,11 +33,8 @@ trait Dsl {
   def φ[A, B, C, D, E, F, R](f: ($[A], $[B], $[C], $[D], $[E], $[F]) => $[R]): φ[A, B :->: C :->: D :->: E :->: F :->: R] =
     φ((a, b, c, d, e) => φ[F, R](f(a, b, c, d, e, _)).data)
 
-  def obj[A](f: φ[Unit, A]): $[A] =
-    DataTerm.obj(f)
-
-  def arrObj[A](f: Unit :=>: A): $[A] =
-    obj(primitive(f))
+  def obj[A](f: Unit :=>: A): $[A] =
+    DataTerm.obj(primitive(f))
 
   def both[A, B, C](ab: $[A**B])(f: $[A] => $[B] => $[C]): $[C] = {
     val f1: φ[A, B :->: C] = φ((a, b) => f(a)(b))
@@ -59,7 +56,7 @@ trait Dsl {
 
 
   implicit class ArrowSyntax[A, B](f: A :=>: B) {
-    def apply(a: $[A]): $[B] = app(primitive[:=>:, **, Unit, Hom, A, B](f), a)
+    def apply(a: $[A]): $[B] = app(primitive[A, B](f), a)
   }
   implicit class CodeTermSyntax[A, B](f: φ[A, B]) {
     def apply(a: $[A]): $[B] = app(f, a)
@@ -68,17 +65,17 @@ trait Dsl {
     def apply(a: $[A]): $[B] = app(f, a)
   }
   implicit class HomArrowSyntax[A, B, C](f: (A :->: B) :=>: C) {
-    def apply(g: A :=>: B): $[C] = this(primitive[:=>:, **, Unit, Hom, A, B](g))
-    def apply(g: φ[A, B]): $[C] = app(primitive[:=>:, **, Unit, Hom, A :->: B, C](f), g.data)
+    def apply(g: A :=>: B): $[C] = this(primitive[A, B](g))
+    def apply(g: φ[A, B]): $[C] = app(primitive[A :->: B, C](f), g.data)
     def apply(g: $[A] => $[B]): $[C] = apply(φ(g))
   }
   implicit class HomCodeTermSyntax[A, B, C](f: φ[A :->: B, C]) {
-    def apply(g: A :=>: B): $[C] = this(primitive[:=>:, **, Unit, Hom, A, B](g))
+    def apply(g: A :=>: B): $[C] = this(primitive[A, B](g))
     def apply(g: φ[A, B]): $[C] = app(f, g.data)
     def apply(g: $[A] => $[B]): $[C] = apply(φ(g))
   }
   implicit class HomHomSyntax[A, B, C](f: $[Hom[A :->: B, C]]) {
-    def apply(g: A :=>: B): $[C] = this(primitive[:=>:, **, Unit, Hom, A, B](g))
+    def apply(g: A :=>: B): $[C] = this(primitive[A, B](g))
     def apply(g: φ[A, B]): $[C] = app(f, g.data)
     def apply(g: $[A] => $[B]): $[C] = apply(φ(g))
 
