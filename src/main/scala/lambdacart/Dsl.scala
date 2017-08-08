@@ -37,11 +37,11 @@ trait Dsl {
     DataTerm.obj(f)
 
   def arrObj[A](f: Unit :=>: A): $[A] =
-    obj(arr(f))
+    obj(primitive(f))
 
   def both[A, B, C](ab: $[A**B])(f: $[A] => $[B] => $[C]): $[C] = {
     val f1: φ[A, B :->: C] = φ((a, b) => f(a)(b))
-    app(uncurry(f1), ab)
+    app(f1.uncurry[B, C], ab)
   }
 
   def apply[A, R](f: $[A] => $[R]): A :=>: R =
@@ -59,7 +59,7 @@ trait Dsl {
 
 
   implicit class ArrowSyntax[A, B](f: A :=>: B) {
-    def apply(a: $[A]): $[B] = app(arr[:=>:, **, Unit, Hom, A, B](f), a)
+    def apply(a: $[A]): $[B] = app(primitive[:=>:, **, Unit, Hom, A, B](f), a)
   }
   implicit class CodeTermSyntax[A, B](f: φ[A, B]) {
     def apply(a: $[A]): $[B] = app(f, a)
@@ -68,17 +68,17 @@ trait Dsl {
     def apply(a: $[A]): $[B] = app(f, a)
   }
   implicit class HomArrowSyntax[A, B, C](f: (A :->: B) :=>: C) {
-    def apply(g: A :=>: B): $[C] = this(arr[:=>:, **, Unit, Hom, A, B](g))
-    def apply(g: φ[A, B]): $[C] = app(arr[:=>:, **, Unit, Hom, A :->: B, C](f), g.data)
+    def apply(g: A :=>: B): $[C] = this(primitive[:=>:, **, Unit, Hom, A, B](g))
+    def apply(g: φ[A, B]): $[C] = app(primitive[:=>:, **, Unit, Hom, A :->: B, C](f), g.data)
     def apply(g: $[A] => $[B]): $[C] = apply(φ(g))
   }
   implicit class HomCodeTermSyntax[A, B, C](f: φ[A :->: B, C]) {
-    def apply(g: A :=>: B): $[C] = this(arr[:=>:, **, Unit, Hom, A, B](g))
+    def apply(g: A :=>: B): $[C] = this(primitive[:=>:, **, Unit, Hom, A, B](g))
     def apply(g: φ[A, B]): $[C] = app(f, g.data)
     def apply(g: $[A] => $[B]): $[C] = apply(φ(g))
   }
   implicit class HomHomSyntax[A, B, C](f: $[Hom[A :->: B, C]]) {
-    def apply(g: A :=>: B): $[C] = this(arr[:=>:, **, Unit, Hom, A, B](g))
+    def apply(g: A :=>: B): $[C] = this(primitive[:=>:, **, Unit, Hom, A, B](g))
     def apply(g: φ[A, B]): $[C] = app(f, g.data)
     def apply(g: $[A] => $[B]): $[C] = apply(φ(g))
 
@@ -87,8 +87,8 @@ trait Dsl {
     def apply(g: $[A :->: B]): $[C] = app(f, g)
   }
   implicit class ProductSyntax[A, B](ab: $[A**B]) {
-    def _1: $[A] = app(fst[:=>:, **, Unit, Hom, A, B], ab)
-    def _2: $[B] = app(snd[:=>:, **, Unit, Hom, A, B], ab)
+    def _1: $[A] = ab.get_1[A, B]
+    def _2: $[B] = ab.get_2[A, B]
   }
 }
 
