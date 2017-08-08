@@ -4,7 +4,7 @@ object Main extends App {
   val dsl = MyDsl.instance
   import dsl._
 
-  val fac: Nat :=>: Nat = dsl { n =>
+  val fac: Nat :->: Nat = dsl { n =>
     forLoop(n)(one ** one)( both(_) { acc => i =>
       times(acc)(i) ** inc(i)
     })._1

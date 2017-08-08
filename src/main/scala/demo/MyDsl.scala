@@ -11,8 +11,8 @@ trait MyDsl extends ExtendedDsl { dsl =>
   // They don't get to see its representation.
   type Nat
 
-  def inc: Nat :=>: Nat
-  def dec: Nat :=>: Maybe[Nat]
+  def inc: Nat :->: Nat
+  def dec: Nat :->: Maybe[Nat]
 
   def zero: $[Nat]
   def one: $[Nat] = inc(zero)
@@ -22,7 +22,7 @@ trait MyDsl extends ExtendedDsl { dsl =>
   //                  /       initial value
   //                 /       /          iteration (loop body)
   //                /       /          / 
-  def forLoop[A]: Nat :=>: A :->: (A :->: A) :->: A =
+  def forLoop[A]: Nat :->: A ->: (A ->: A) ->: A =
     dsl { (n, a, f) =>
       doWhile[A**Nat, A]( a**n )( both(_) { a => n =>
         maybe[Nat, (A**Nat)\/A](dec(n)) (
@@ -32,12 +32,12 @@ trait MyDsl extends ExtendedDsl { dsl =>
     }
 
 
-  def plus: Nat :=>: Nat :->: Nat =
+  def plus: Nat :->: Nat ->: Nat =
     dsl { (a, b) =>
       forLoop(a)(b)(inc)
     }
   
-  def times: Nat :=>: Nat :->: Nat =
+  def times: Nat :->: Nat ->: Nat =
     dsl { (a, b) =>
       forLoop(a)(zero)(plus(b))
     }
@@ -46,13 +46,13 @@ trait MyDsl extends ExtendedDsl { dsl =>
   // Interface for interpreting arrows
 
   type Native[A]
-  def exec[A, B](a: Native[A])(f: A :=>: B): Native[B]
-  def exec[A, B, C](a: Native[A], b: Native[B])(f: A :=>: B :->: C): Native[C]
+  def exec[A, B](a: Native[A])(f: A :->: B): Native[B]
+  def exec[A, B, C](a: Native[A], b: Native[B])(f: A :->: B ->: C): Native[C]
   def encodeInt(i: Int): Native[Nat]
   def decodeInt(n: Native[Nat]): Int
 
   // For testing purposes
-  def sizeOf[A, B](f: A :=>: B): Int
+  def sizeOf[A, B](f: A :->: B): Int
 }
 
 object MyDsl {
@@ -65,7 +65,7 @@ object MyDsl {
 private[demo] object MyDslImpl extends MyDsl {
 
   type Nat = Int
-  type :=>:[A, B] = List[Inst]
+  type :->:[A, B] = List[Inst]
   type **[A, B] = (A, B)
   type \/[A, B] = Either[A, B]
 
@@ -73,18 +73,18 @@ private[demo] object MyDslImpl extends MyDsl {
 
   val zero: $[Nat] = obj(List(Zero))
 
-  def doWhile[A, B]: A :=>: (A :=>: (A\/B)) :=>: B = List(Curried(List(While)))
+  def doWhile[A, B]: A :->: (A :->: (A\/B)) :->: B = List(Curried(List(While)))
 
-  def -\/[A, B]: A :=>: (A \/ B) = List(ToLeft)
-  def \/-[A, B]: B :=>: (A \/ B) = List(ToRight)
-  def either[A, B, C]: (A \/ B) :=>: (A :=>: C) :=>: (B :=>: C) :=>: C =
+  def -\/[A, B]: A :->: (A \/ B) = List(ToLeft)
+  def \/-[A, B]: B :->: (A \/ B) = List(ToRight)
+  def either[A, B, C]: (A \/ B) :->: (A :->: C) :->: (B :->: C) :->: C =
     List(Curried(List(Curried(List(Either)))))
 
-  def fix[F[_]]: F[Fix[F]] :=>: Fix[F] = List()
-  def unfix[F[_]]: Fix[F] :=>: F[Fix[F]] = List()
+  def fix[F[_]]: F[Fix[F]] :->: Fix[F] = List()
+  def unfix[F[_]]: Fix[F] :->: F[Fix[F]] = List()
   
-  val inc: Nat :=>: Nat = List(Inc)
-  val dec: Nat :=>: Maybe[Nat] = List(Dec)
+  val inc: Nat :->: Nat = List(Inc)
+  val dec: Nat :->: Maybe[Nat] = List(Dec)
 
   def encodeInt(i: Int): Native[Nat] = {
     require(i >= 0)
@@ -93,7 +93,7 @@ private[demo] object MyDslImpl extends MyDsl {
 
   def decodeInt(n: Native[Nat]): Int = n
 
-  def sizeOf[A, B](f: A :=>: B): Int = {
+  def sizeOf[A, B](f: A :->: B): Int = {
     @tailrec def go(sum: Int, is: List[Inst]): Int =
       is match {
         case i :: is => i match {
@@ -130,7 +130,7 @@ private[demo] object MyDslImpl extends MyDsl {
 
   type Native[A] = A
 
-  def exec[A, B](a: Native[A])(f: A :=>: B): Native[B] = {
+  def exec[A, B](a: Native[A])(f: A :->: B): Native[B] = {
     val stack = execStack(List(a), f)
 
     assert(stack.size == 1)
@@ -138,7 +138,7 @@ private[demo] object MyDslImpl extends MyDsl {
     stack.head.asInstanceOf[B]
   }
 
-  def exec[A, B, C](a: Native[A], b: Native[B])(f: A :=>: B :->: C): Native[C] = {
+  def exec[A, B, C](a: Native[A], b: Native[B])(f: A :->: B ->: C): Native[C] = {
     val stack1 = execStack(List(a, b), f)
 
     assert(stack1.size == 2)
@@ -186,19 +186,19 @@ private[demo] object MyDslImpl extends MyDsl {
         stack
     }
 
-  implicit def ccc: CCC.Aux[:=>:, **, Unit, Hom] = new CCC[:=>:] {
+  implicit def ccc: CCC.Aux[:->:, **, Unit, Hom] = new CCC[:->:] {
     type **[A, B] = MyDslImpl.**[A, B]
     type Unit = MyDslImpl.Unit
     type Hom[A, B] = MyDslImpl.Hom[A, B]
 
-    def id[A]: A :=>: A = List()
-    def compose[A, B, C](f: B :=>: C, g: A :=>: B): A :=>: C = g ::: f
-    def fst[A, B]: (A**B) :=>: A = Unmerge :: Swap :: Pop :: Nil
-    def snd[A, B]: (A**B) :=>: B = Unmerge :: Pop :: Nil
-    def prod[A, B, C](f: A :=>: B, g: A :=>: C): A :=>: (B**C) = Dup :: g ::: Swap :: f ::: Merge :: Nil
-    def terminal[A]: A :=>: Unit = Null :: Nil
-    def curry[A, B, C](f: (A**B) :=>: C): A :=>: B :=>: C = Curried(f) :: Nil
-    def uncurry[A, B, C](f: A :=>: B :=>: C): (A**B) :=>: C = Unmerge :: f ::: Load :: Nil
+    def id[A]: A :->: A = List()
+    def compose[A, B, C](f: B :->: C, g: A :->: B): A :->: C = g ::: f
+    def fst[A, B]: (A**B) :->: A = Unmerge :: Swap :: Pop :: Nil
+    def snd[A, B]: (A**B) :->: B = Unmerge :: Pop :: Nil
+    def prod[A, B, C](f: A :->: B, g: A :->: C): A :->: (B**C) = Dup :: g ::: Swap :: f ::: Merge :: Nil
+    def terminal[A]: A :->: Unit = Null :: Nil
+    def curry[A, B, C](f: (A**B) :->: C): A :->: B :->: C = Curried(f) :: Nil
+    def uncurry[A, B, C](f: A :->: B :->: C): (A**B) :->: C = Unmerge :: f ::: Load :: Nil
   }
 
 }

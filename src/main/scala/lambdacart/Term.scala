@@ -9,7 +9,7 @@ trait Terms { self: Dsl =>
   import DataTerm._
 
   // ⨪ is Unicode U+2A2A
-  type :⨪>:[X, Y] = Either[X :=>: Y, Var[Y]]
+  type :⨪>:[X, Y] = Either[X :->: Y, Var[Y]]
 
 sealed trait DataTerm[A] {
 
@@ -157,14 +157,14 @@ final class CodeTerm[A, B](val unwrap: FreeCCC[:⨪>:, **, Unit, Hom, A, B]) {
     def caseSnd[X]                             (implicit ev:   (X**B) === A) = false
     def caseId                                 (implicit ev:        A === B) = false
     def caseTerminal                           (implicit ev:     Unit === B) = false
-    def casePrimitive    (f: A :=>: B)                                       = false
+    def casePrimitive    (f: A :->: B)                                       = false
     def caseConstVar     (q: Var[B])                                         = q.containsVar(v)
   })
 
   /** Eliminates the free variable `v` from this term. */
   def unapply[V](v: Var[V]): φ[V, Hom[A, B]] = visit(new Visitor[φ[V, Hom[A, B]]] {
 
-    def casePrimitive(f: A :=>: B) = primitive(f).const[V]
+    def casePrimitive(f: A :->: B) = primitive(f).const[V]
 
     def caseId      (implicit ev:      A === B) = const[V]
     def caseFst[Y]  (implicit ev: (B**Y) === A) = const[V]
@@ -206,11 +206,11 @@ final class CodeTerm[A, B](val unwrap: FreeCCC[:⨪>:, **, Unit, Hom, A, B]) {
     * All free variables must be eliminated before compilation (see [[#unapply]]).
     * Otherwise, it is a runtime error.
     */
-  def compile: A :=>: B =
+  def compile: A :->: B =
     unwrap.foldMap(Λ[α, β](_ match {
       case  Left(f) => f
       case Right(v) => sys.error("Cannot compile variable.")
-    }): :⨪>: ~~> :=>:)
+    }): :⨪>: ~~> :->:)
 
   def app(a: $[A]): $[B] =
     a.visit(new DataTerm.Visitor[A, DataTerm[B]] {
@@ -227,7 +227,7 @@ final class CodeTerm[A, B](val unwrap: FreeCCC[:⨪>:, **, Unit, Hom, A, B]) {
 
   /* Syntax */
 
-  def **[C]   (c: $[C]   ): $[Hom[A, B] ** C]       = this.data ** c
+  def **[C]   (c: $[C]   ): $[Hom[A, B] ** C]         = this.data ** c
   def **[C, D](f: φ[C, D]): $[Hom[A, B] ** Hom[C, D]] = this.data ** f.data
 }
 
@@ -238,7 +238,7 @@ object CodeTerm {
     new CodeTerm(f)
 
   // wrap primitive arrow
-  def primitive[A, B](f: A :=>: B): CodeTerm[A, B] =
+  def primitive[A, B](f: A :->: B): CodeTerm[A, B] =
     wrap(FreeCCC.lift[:⨪>:, **, Unit, Hom, A, B](Left(f)))
 
   // wrap a variable as a constant function
@@ -279,7 +279,7 @@ object CodeTerm {
 
   trait Visitor[A, B, R] extends FreeCCC.Visitor[:⨪>:, **, Unit, Hom, A, B, R] {
 
-    def casePrimitive    (f: A :=>: B)                                         : R
+    def casePrimitive    (f: A :->: B)                                         : R
     def caseConstVar     (b: Var[B])                                           : R
     def caseCompose[X]   (f: φ[X, B], g: φ[A, X])                              : R
     def caseId                                   (implicit ev:        A === B) : R
