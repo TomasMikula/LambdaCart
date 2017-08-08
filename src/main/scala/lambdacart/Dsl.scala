@@ -38,7 +38,7 @@ trait Dsl extends Terms {
 
   def both[A, B, C](ab: $[A**B])(f: $[A] => $[B] => $[C]): $[C] = {
     val f1: φ[A, B :->: C] = φ((a, b) => f(a)(b))
-    app(f1.uncurry[B, C], ab)
+    app(uncurry(f1), ab)
   }
 
   def apply[A, R](f: $[A] => $[R]): A :=>: R =

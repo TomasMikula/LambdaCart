@@ -120,14 +120,13 @@ object DataTerm {
   */
 final class CodeTerm[A, B](val unwrap: FreeCCC[:⨪>:, **, Unit, Hom, A, B]) {
 
-  type Repr[X, Y] = FreeCCC[:⨪>:, **, Unit, Hom, X, Y]
+  type Visitor[R] = CodeTerm.Visitor[A, B, R]
 
-  type Visitor[R]       =  CodeTerm.Visitor[A, B, R]
+  def visit[R](v: Visitor[R]): R =
+    unwrap.visit(v)
 
-
-  def visit[R](v: Visitor[R]): R = unwrap.visit(v)
-
-  def const[Z]: φ[Z, Hom[A, B]] = wrap(unwrap.const[Z]: Repr[Z, Hom[A, B]])
+  def const[Z]: φ[Z, Hom[A, B]] =
+    wrap(unwrap.const[Z])
 
   def data: DataTerm[Hom[A, B]] =
     DataTerm.obj(this.const[Unit])
@@ -144,20 +143,63 @@ final class CodeTerm[A, B](val unwrap: FreeCCC[:⨪>:, **, Unit, Hom, A, B]) {
   def compose[Z](that: φ[Z, A]): φ[Z, B] =
     wrap(this.unwrap compose that.unwrap)
 
-  def curry[X, Y](implicit ev: A === (X ** Y)): φ[X, Hom[Y, B]] =
-    wrap(this.unwrap.curry)
-
-  def uncurry[X, Y](implicit ev: B === Hom[X, Y]): φ[A**X, Y] =
-    wrap(this.unwrap.uncurry)
+  def andThen[C](that: φ[B, C]): φ[A, C] =
+    that compose this
 
   def size: Int = unwrap.size
 
-  def containsVar[V](v: Var[V]): Boolean =
-    unwrap.containsVar(v)
+  def containsVar[V](v: Var[V]): Boolean = visit(new Visitor[Boolean] {
+    def caseCurry[Y, Z]  (f: φ[A ** Y, Z]     )(implicit ev: Hom[Y,Z] === B) = f.containsVar(v)
+    def caseUncurry[X, Y](f: φ[X, Hom[Y, B]]  )(implicit ev: (X ** Y) === A) = f.containsVar(v)
+    def caseCompose[Y]   (f: φ[Y,B], g: φ[A,Y])                              = f.containsVar(v) || g.containsVar(v)
+    def caseProd[Y, Z]   (f: φ[A,Y], g: φ[A,Z])(implicit ev:   (Y**Z) === B) = f.containsVar(v) || g.containsVar(v)
+    def caseFst[Y]                             (implicit ev:   (B**Y) === A) = false
+    def caseSnd[X]                             (implicit ev:   (X**B) === A) = false
+    def caseId                                 (implicit ev:        A === B) = false
+    def caseTerminal                           (implicit ev:     Unit === B) = false
+    def casePrimitive    (f: A :=>: B)                                       = false
+    def caseConstVar     (q: Var[B])                                         = q.containsVar(v)
+  })
 
   /** Eliminates the free variable `v` from this term. */
-  def unapply[V](v: Var[V]): φ[V, Hom[A, B]] =
-    wrap(unwrap.unapply(v))
+  def unapply[V](v: Var[V]): φ[V, Hom[A, B]] = visit(new Visitor[φ[V, Hom[A, B]]] {
+
+    def casePrimitive(f: A :=>: B) = primitive(f).const[V]
+
+    def caseId      (implicit ev:      A === B) = const[V]
+    def caseFst[Y]  (implicit ev: (B**Y) === A) = const[V]
+    def caseSnd[X]  (implicit ev: (X**B) === A) = const[V]
+    def caseTerminal(implicit ev:   Unit === B) = const[V]
+
+    def caseUncurry[X, Y](f: φ[X, Hom[Y, B]])(implicit ev: (X ** Y) === A) =
+      if(f.containsVar(v))
+        curry(assocL[V, X, Y] andThen uncurry(uncurry(f.unapply(v)))).castB(ev.lift[Hom[?, B]])
+      else const[V]
+
+    def caseCurry[Y, Z](f: φ[A ** Y, Z])(implicit ev: Hom[Y, Z] === B) =
+      if(f.containsVar(v)) curry(curry(assocR[V, A, Y] andThen uncurry(f.unapply(v)))).castB(ev.lift[Hom[A, ?]])
+      else                 const[V]
+
+    def caseProd[Y, Z](f: φ[A, Y], g: φ[A, Z])(implicit ev: (Y**Z) === B) =
+      if(f.containsVar(v) || g.containsVar(v)) curry(uncurry(f.unapply(v)) prod uncurry(g.unapply(v))).castB(ev.lift[Hom[A, ?]])
+      else                                     const[V]
+
+    def caseCompose[Y](f: φ[Y, B], g: φ[A, Y]) =
+      if(f.containsVar(v) || g.containsVar(v)) {
+        val h1: φ[V**A, Hom[V, B]] = swap(f.unapply(v)) compose uncurry(g.unapply(v))
+        val h2: φ[(V**V)**A, B] = flip(uncurry(h1)) compose assocR[V, V, A]
+        val diag1: φ[V**A, (V**V)**A] = parallel(diag[V], id)
+        curry(h2 compose diag1)
+      } else {
+        const[V]
+      }
+
+    def caseConstVar(q: Var[B]) =
+      sameVar(q, v) match {
+        case Some(ev) => constA[B, A].castA[V](ev)
+        case None     => constVar[A, B](q).const[V]
+      }
+  })
 
   /** Compiles this function term into the underlying Cartesian closed category.
     *
@@ -187,64 +229,6 @@ final class CodeTerm[A, B](val unwrap: FreeCCC[:⨪>:, **, Unit, Hom, A, B]) {
 
   def **[C]   (c: $[C]   ): $[Hom[A, B] ** C]       = this.data ** c
   def **[C, D](f: φ[C, D]): $[Hom[A, B] ** Hom[C, D]] = this.data ** f.data
-
-
-  /** Enrich the free representation with some operations. */
-  private implicit class ReprOps[P, Q](f: Repr[P, Q]) {
-
-    def containsVar[V](v: Var[V]): Boolean = f.visit(new CodeTerm.Visitor[P, Q, Boolean] {
-      def apply[Y, Z](a:    Curry[P, Y, Z])(implicit ev: Hom[Y, Z] === Q) = a.f.containsVar(v)
-      def apply[X, Y](a:  Uncurry[X, Y, Q])(implicit ev: (X ** Y) === P)  = a.f.containsVar(v)
-      def apply[Y]   (a:  Compose[P, Y, Q])                               = a.f.containsVar(v) || a.g.containsVar(v)
-      def apply[Y, Z](a:     Prod[P, Y, Z])(implicit ev:   (Y**Z) === Q)  = a.f.containsVar(v) || a.g.containsVar(v)
-      def apply[Y]   (a:      Fst[Q, Y])   (implicit ev:   (Q**Y) === P)  = false
-      def apply[X]   (a:      Snd[X, Q])   (implicit ev:   (X**Q) === P)  = false
-      def apply      (a:       Id[P])      (implicit ev:        P === Q)  = false
-      def apply      (a: Terminal[P])      (implicit ev:     Unit === Q)  = false
-      def apply      (a: P :=>: Q)                                        = false
-      def apply      (b: Var[Q])                                          = b.containsVar(v)
-    })
-
-    def unapply[V](v: Var[V]): Repr[V, Hom[P, Q]] = f.visit(new CodeTerm.Visitor[P, Q, Repr[V, Hom[P, Q]]] {
-
-      def apply   (a:       P :=>: Q)                            = primitive(a).unwrap.const[V]
-      def apply   (a:       Id[P]   )(implicit ev:      P === Q) = a.castB[Q].const[V]
-      def apply[Y](a:      Fst[Q, Y])(implicit ev: (Q**Y) === P) = a.castA[P].const[V]
-      def apply[X](a:      Snd[X, Q])(implicit ev: (X**Q) === P) = a.castA[P].const[V]
-      def apply   (a: Terminal[P]   )(implicit ev:   Unit === Q) = a.castB[Q].const[V]
-
-      def apply[X, Y](a: Uncurry[X, Y, Q])(implicit ev: (X ** Y) === P) = (
-        if(a.containsVar(v)) curry(andThen(assocL[V, X, Y], uncurry(uncurry(a.f.unapply(v)))))
-        else a.const[V]
-      ).castB(ev.lift[Hom[?, Q]])
-
-      def apply[Y, Z](a: Curry[P, Y, Z])(implicit ev: Hom[Y, Z] === Q) = (
-        if(a.containsVar(v)) curry(curry(andThen(assocR[V, P, Y], uncurry(a.f.unapply(v)))))
-        else                 a.const[V]
-      ).castB(ev.lift[Hom[P, ?]])
-
-      def apply[Y, Z](a: Prod[P, Y, Z])(implicit ev: (Y**Z) === Q) = (
-        if(a.containsVar(v)) curry(prod(uncurry(a.f.unapply(v)), uncurry(a.g.unapply(v))))
-        else                 a.const[V]
-      ).castB(ev.lift[Hom[P, ?]])
-
-      def apply[Y](a: Compose[P, Y, Q]) =
-        if(a.containsVar(v)) {
-          val f: Repr[V**P, Hom[V, Q]] = compose(swap(a.f.unapply(v)), uncurry(a.g.unapply(v)))
-          val g: Repr[(V**V)**P, Q] = compose(flip(uncurry(f)), assocR[V, V, P])
-          val diag1: Repr[V**P, (V**V)**P] = parallel(diag[V], id)
-          curry(compose(g, diag1))
-        } else {
-          a.const[V]
-        }
-
-      def apply(q: Var[Q]) =
-        sameVar(q, v) match {
-          case Some(ev) => constA[Q, P].castA[V](ev)
-          case None     => constVar[P, Q](q).const[V]
-        }
-    })
-  }
 }
 
 object CodeTerm {
@@ -295,41 +279,30 @@ object CodeTerm {
 
   trait Visitor[A, B, R] extends FreeCCC.Visitor[:⨪>:, **, Unit, Hom, A, B, R] {
 
-    def apply(f: A :=>: B): R
-    def apply(b: Var[B]): R
+    def casePrimitive    (f: A :=>: B)                                         : R
+    def caseConstVar     (b: Var[B])                                           : R
+    def caseCompose[X]   (f: φ[X, B], g: φ[A, X])                              : R
+    def caseId                                   (implicit ev:        A === B) : R
+    def caseProd   [X, Y](f: φ[A, X], g: φ[A, Y])(implicit ev: (X ** Y) === B) : R
+    def caseFst    [X]                           (implicit ev: (B ** X) === A) : R
+    def caseSnd    [X]                           (implicit ev: (X ** B) === A) : R
+    def caseTerminal                             (implicit ev:     Unit === B) : R
+    def caseCurry  [X, Y](f: φ[(A**X), Y])       (implicit ev: Hom[X,Y] === B) : R
+    def caseUncurry[X, Y](f: φ[X, Hom[Y, B]])    (implicit ev: (X ** Y) === A) : R
 
-    override def apply(f: Lift[A, B]): R =
+    final override def apply[X]   (f: Compose[A, X, B])                              = caseCompose(wrap(f.f), wrap(f.g))
+    final override def apply      (f: Id[A]           )(implicit ev:        A === B) = caseId
+    final override def apply[X]   (f: Fst[B, X]       )(implicit ev: (B ** X) === A) = caseFst
+    final override def apply[X]   (f: Snd[X, B]       )(implicit ev: (X ** B) === A) = caseSnd
+    final override def apply[X, Y](f: Prod[A, X, Y]   )(implicit ev: (X ** Y) === B) = caseProd(wrap(f.f), wrap(f.g))
+    final override def apply      (f: Terminal[A]     )(implicit ev:     Unit === B) = caseTerminal
+    final override def apply[X, Y](f: Curry[A, X, Y]  )(implicit ev: Hom[X,Y] === B) = caseCurry(wrap(f.f))
+    final override def apply[X, Y](f: Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) = caseUncurry(wrap(f.f))
+    final override def apply      (f: Lift[A, B]) =
       f.f match {
-        case  Left(f) => apply(f)
-        case Right(b) => apply(b)
+        case  Left(f) => casePrimitive(f)
+        case Right(b) => caseConstVar(b)
       }
-
-    // Convenience type aliases and methods
-
-    type Φ[X, Y] = FreeCCC[:⨪>:, **, Unit, Hom, X, Y]
-
-    def constVar[Z, X](x: Var[X]): Φ[Z, X] = FreeCCC.lift[:⨪>:, **, Unit, Hom, Z, X](Right(x))
-
-    def id[X]: Φ[X, X]                                      = FreeCCC.id
-    def compose[X, Y, Z](f: Φ[Y, Z], g: Φ[X, Y]): Φ[X, Z]   = FreeCCC.compose(f, g)
-    def fst[X, Y]: Φ[(X**Y), X]                             = FreeCCC.fst
-    def snd[X, Y]: Φ[(X**Y), Y]                             = FreeCCC.snd
-    def prod[X, Y, Z](f: Φ[X, Y], g: Φ[X, Z]): Φ[X, (Y**Z)] = FreeCCC.prod(f, g)
-    def terminal[X]: Φ[X, Unit]                             = FreeCCC.terminal
-    def curry[X, Y, Z](f: Φ[(X**Y), Z]): Φ[X, Hom[Y, Z]]    = FreeCCC.curry(f)
-    def uncurry[X, Y, Z](f: Φ[X, Hom[Y, Z]]): Φ[(X**Y), Z]  = FreeCCC.uncurry(f)
-
-    def constA[X, Y]: Φ[X, Hom[Y, X]]                       = FreeCCC.constA
-    def getConst[X, Y](f: Φ[Unit, Hom[X, Y]]): Φ[X, Y]      = FreeCCC.getConst(f)
-    def andThen[X, Y, Z](f: Φ[X, Y], g: Φ[Y, Z]): Φ[X, Z]   = FreeCCC.andThen(f, g)
-    def flip[X, Y, Z](f: Φ[(X**Y), Z]): Φ[(Y**X), Z]        = FreeCCC.flip(f)
-    def swap[X, Y, Z](f: Φ[X, Hom[Y, Z]]): Φ[Y, Hom[X, Z]]  = FreeCCC.swap(f)
-    def eval[X, Y]: Φ[Hom[X, Y] ** X, Y]                    = FreeCCC.eval
-    def assocR[X, Y, Z]: Φ[((X**Y)**Z), (X**(Y**Z))]        = FreeCCC.assocR
-    def assocL[X, Y, Z]: Φ[(X**(Y**Z)), ((X**Y)**Z)]        = FreeCCC.assocL
-    def diag[X]: Φ[X, (X ** X)]                             = FreeCCC.diag
-    def parallel[X1, X2, Y1, Y2](f: Φ[X1, Y1], g: Φ[X2, Y2]): Φ[(X1**X2), (Y1**Y2)] =
-      FreeCCC.parallel(f, g)
   }
 }
 
