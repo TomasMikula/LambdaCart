@@ -16,7 +16,7 @@ class TermSizeTest extends FunSuite {
   }
 
   test("x => y => x ** y") {
-    assert(φ[X, Y, X**Y]((x, y) => x ** y).size == 228) // was 44
+    assert(φ[X, Y, X**Y]((x, y) => x ** y).size == 198) // was 44
   }
 
   test("x => y => y ** x") {
@@ -24,11 +24,11 @@ class TermSizeTest extends FunSuite {
   }
 
   test("x => y => z => x ** (y ** z)") {
-    assert(φ[X, Y, Z, X**(Y**Z)]((x, y, z) => x ** (y ** z)).size == 1407) // was 213
+    assert(φ[X, Y, Z, X**(Y**Z)]((x, y, z) => x ** (y ** z)).size == 1207) // was 213
   }
 
   test("x => y => z => (x ** y) ** z") {
-    assert(φ[X, Y, Z, (X**Y)**Z]((x, y, z) => (x ** y) ** z).size == 1677) // was 169
+    assert(φ[X, Y, Z, (X**Y)**Z]((x, y, z) => (x ** y) ** z).size == 1477) // was 169
   }
 
   private def assocR[A, B, C]: φ[(A**B)**C, A**(B**C)] =
@@ -46,11 +46,11 @@ class TermSizeTest extends FunSuite {
   }
 
   test("assocL . assocR") { // should reduce to identity
-    assert(φ((xyz: $[(X**Y)**Z]) => assocL(assocR(xyz))).size == 879) // should be 1
+    assert(φ((xyz: $[(X**Y)**Z]) => assocL(assocR(xyz))).size == 877) // should be 1
   }
 
   test("assocR . assocR") { // should reduce to identity
-    assert(φ((xyz: $[X**(Y**Z)]) => assocR(assocL(xyz))).size == 879) // should be 1
+    assert(φ((xyz: $[X**(Y**Z)]) => assocR(assocL(xyz))).size == 877) // should be 1
   }
 
   test("x => y => x") {
@@ -75,22 +75,22 @@ class TermSizeTest extends FunSuite {
 
   test("flip . flip") { // should reduce to identity
     def flip[A, B]: φ[A**B, B**A] = φ(ab => ab._2 ** ab._1)
-    assert(φ[X**Y, X**Y](xy => flip(flip(xy))).size == 381) // should be 1 (identity)
+    assert(φ[X**Y, X**Y](xy => flip(flip(xy))).size == 379) // should be 1 (identity)
   }
 
   test("x => inc(x)") {
-    assert(φ[Nat, Nat](x => inc(x)).size == 9) // should be 1
+    assert(φ[Nat, Nat](x => inc(x)).size == 7) // should be 1
   }
 
   test("forLoop") {
-    assert(sizeOf(forLoop[X]) == 11961) // was 3622
+    assert(sizeOf(forLoop[X]) == 11567) // was 3622
   }
 
   test("plus") {
-    assert(sizeOf(plus) == 13516) // was 3961
+    assert(sizeOf(plus) == 13122) // was 3961
   }
 
   test("times") {
-    assert(sizeOf(times) == 26032) // was 7793
+    assert(sizeOf(times) == 25193) // was 7793
   }
 }
