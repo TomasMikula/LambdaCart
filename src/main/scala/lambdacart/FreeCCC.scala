@@ -295,6 +295,7 @@ object FreeCCC {
 
         override def apply[X](f: Compose[A, X, B]) = f.f.visit(new f.f.OptVisitor[FreeCCC[:=>:, **, T, H, A, B]] {
           override def apply(g: Id[X])(implicit ev: X === B) = Some(f.g.castB(ev))
+          override def apply(g: Terminal[X])(implicit ev: T === B) = Some((Terminal(): Terminal[A]).castB[B])
         }).orElse(                                   f.g.visit(new f.g.OptVisitor[FreeCCC[:=>:, **, T, H, A, B]] {
           override def apply(g: Id[A])(implicit ev: A === X) = Some(f.f.castA(ev.flip))
         }))

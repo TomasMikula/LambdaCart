@@ -62,7 +62,7 @@ class TermSizeTest extends FunSuite {
   }
 
   test("x => y => z => x") {
-    assert(φ[X, Y, Z, X]((x, y, z) => x).size == 123) // was 45
+    assert(φ[X, Y, Z, X]((x, y, z) => x).size == 121) // was 45
   }
 
   test("x => y => z => z") {
