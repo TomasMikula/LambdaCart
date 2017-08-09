@@ -292,7 +292,11 @@ object FreeCCC {
     List(
       ν[RR][A, B](f => f.visit(new f.Transformer {
         override def apply      (f:     Lift[A, B]   )                              = None
-        override def apply[X]   (f:  Compose[A, X, B])                              = None
+
+        override def apply[X](f: Compose[A, X, B]) = f.f.visit(new f.f.OptVisitor[FreeCCC[:=>:, **, T, H, A, B]] {
+          override def apply(g: Id[X])(implicit ev: X === B) = Some(f.g.castB(ev))
+        })
+
         override def apply      (f:       Id[A]      )(implicit ev:        A === B) = None
         override def apply[X]   (f:      Fst[B, X]   )(implicit ev: (B ** X) === A) = None
         override def apply[X]   (f:      Snd[X, B]   )(implicit ev: (X ** B) === A) = None
