@@ -151,10 +151,16 @@ object FreeCCC {
 
   case class Curry[:=>:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:=>:, **, T, H, A ** B, C]) extends FreeCCC[:=>:, **, T, H, A, H[B, C]] {
     def visit[R](v: Visitor[R]): R = v(this)
+
+    def cast[Y, Z](implicit ev: H[B, C] === H[Y, Z]): Curry[:=>:, **, T, H, A, Y, Z] =
+      this.asInstanceOf[Curry[:=>:, **, T, H, A, Y, Z]]
   }
 
   case class Uncurry[:=>:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:=>:, **, T, H, A, H[B, C]]) extends FreeCCC[:=>:, **, T, H, A ** B, C] {
     def visit[R](v: Visitor[R]): R = v(this)
+
+    def cast[X, Y](implicit ev: (A ** B) === (X ** Y)): Uncurry[:=>:, **, T, H, X, Y, C] =
+      this.asInstanceOf[Uncurry[:=>:, **, T, H, X, Y, C]]
   }
 
   /** Marker that the tree below this node is optimized,
@@ -185,7 +191,7 @@ object FreeCCC {
     def apply[X, Y](f:     Prod[A, X, Y])(implicit ev: (X ** Y) === B) : R
     def apply      (f: Terminal[A]      )(implicit ev:        T === B) : R
     def apply[X, Y](f:    Curry[A, X, Y])(implicit ev:  H[X, Y] === B) : R
-    def apply[X, Y](f:  Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) : R
+    def apply[X, Y](f:  Uncurry[X, Y, B])(implicit e1: (X ** Y) === A) : R
   }
 
   trait OptVisitor[:=>:[_, _], **[_, _], T, H[_, _], A, B, R]
@@ -292,8 +298,13 @@ object FreeCCC {
         override def apply[X]   (f:      Snd[X, B]   )(implicit ev: (X ** B) === A) = None
         override def apply[X, Y](f:     Prod[A, X, Y])(implicit ev: (X ** Y) === B) = None
         override def apply      (f: Terminal[A]      )(implicit ev:        T === B) = None
-        override def apply[X, Y](f:    Curry[A, X, Y])(implicit ev:  H[X, Y] === B) = None
-        override def apply[X, Y](f:  Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) = None
+
+        override def apply[X, Y](f: Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) =
+          f.f.visit(new f.f.OptVisitor[FreeCCC[:=>:, **, T, H, A, B]] {
+            // reduce uncurry(curry(f)) to f
+            override def apply[Q, R](g: Curry[X, Q, R])(implicit ev1: H[Q, R] === H[Y, B]) =
+              Some(g.cast(ev1).f.castA[A])
+          })
       }))
     )
   }
