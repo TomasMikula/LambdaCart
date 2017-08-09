@@ -54,7 +54,7 @@ class TermSizeTest extends FunSuite {
   }
 
   test("x => y => x") {
-    assert(φ[X, Y, X]((x, y) => x).size == 48) // was 4
+    assert(φ[X, Y, X]((x, y) => x).size == 44) // was 4
   }
 
   test("x => y => y") {
@@ -62,7 +62,7 @@ class TermSizeTest extends FunSuite {
   }
 
   test("x => y => z => x") {
-    assert(φ[X, Y, Z, X]((x, y, z) => x).size == 121) // was 45
+    assert(φ[X, Y, Z, X]((x, y, z) => x).size == 117) // was 45
   }
 
   test("x => y => z => z") {
@@ -83,14 +83,14 @@ class TermSizeTest extends FunSuite {
   }
 
   test("forLoop") {
-    assert(sizeOf(forLoop[X]) == 11567) // was 3622
+    assert(sizeOf(forLoop[X]) == 11558) // was 3622
   }
 
   test("plus") {
-    assert(sizeOf(plus) == 13122) // was 3961
+    assert(sizeOf(plus) == 13113) // was 3961
   }
 
   test("times") {
-    assert(sizeOf(times) == 25193) // was 7793
+    assert(sizeOf(times) == 25175) // was 7793
   }
 }

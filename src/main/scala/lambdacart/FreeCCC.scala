@@ -143,6 +143,9 @@ object FreeCCC {
 
   case class Prod[:=>:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:=>:, **, T, H, A, B], g: FreeCCC[:=>:, **, T, H, A, C]) extends FreeCCC[:=>:, **, T, H, A, B ** C] {
     def visit[R](v: Visitor[R]): R = v(this)
+
+    def cast[Y, Z](implicit ev: (B ** C) === (Y ** Z)): Prod[:=>:, **, T, H, A, Y, Z] =
+      this.asInstanceOf[Prod[:=>:, **, T, H, A, Y, Z]]
   }
 
   case class Terminal[:=>:[_, _], **[_, _], T, H[_, _], A]() extends FreeCCC[:=>:, **, T, H, A, T] {
@@ -169,6 +172,7 @@ object FreeCCC {
   private[FreeCCC]
   case class Optimized[:=>:[_, _], **[_, _], T, H[_, _], A, B](f: FreeCCC[:=>:, **, T, H, A, B]) extends FreeCCC[:=>:, **, T, H, A, B] {
     def visit[R](v: Visitor[R]): R = f.visit(v)
+    override def toString = f.toString
   }
 
 
@@ -294,10 +298,20 @@ object FreeCCC {
         override def apply      (f:     Lift[A, B]   )                              = None
 
         override def apply[X](f: Compose[A, X, B]) = f.f.visit(new f.f.OptVisitor[FreeCCC[:=>:, **, T, H, A, B]] {
+          // reduce `id . g` to `g`
           override def apply(g: Id[X])(implicit ev: X === B) = Some(f.g.castB(ev))
+          // reduce `terminal . g` to `terminal`
           override def apply(g: Terminal[X])(implicit ev: T === B) = Some((Terminal(): Terminal[A]).castB[B])
         }).orElse(                                   f.g.visit(new f.g.OptVisitor[FreeCCC[:=>:, **, T, H, A, B]] {
+          // reduce `f . id` to `f`
           override def apply(g: Id[A])(implicit ev: A === X) = Some(f.f.castA(ev.flip))
+          override def apply[Y, Z](p: Prod[A, Y, Z])(implicit ev: (Y ** Z) === X) =
+            f.f.visit(new f.f.OptVisitor[FreeCCC[:=>:, **, T, H, A, B]] {
+              // reduce `fst . prod(f, g)` to `f`
+              override def apply[Q](fst: Fst[B, Q])(implicit ev1: (B ** Q) === X) = Some(p.cast(ev1.flip.compose(ev)).f)
+              // reduce `snd . prod(f, g)` to `g`
+              override def apply[Q](snd: Snd[Q, B])(implicit ev1: (Q ** B) === X) = Some(p.cast(ev1.flip.compose(ev)).g)
+            })
         }))
 
         override def apply      (f:       Id[A]      )(implicit ev:        A === B) = None
