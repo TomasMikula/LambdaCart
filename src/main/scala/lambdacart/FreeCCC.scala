@@ -306,6 +306,13 @@ object FreeCCC {
         override def apply[X, Y](f:     Prod[A, X, Y])(implicit ev: (X ** Y) === B) = None
         override def apply      (f: Terminal[A]      )(implicit ev:        T === B) = None
 
+        override def apply[Y, Z](f: Curry[A, Y, Z])(implicit ev: H[Y, Z] === B) =
+          f.f.visit(new f.f.OptVisitor[FreeCCC[:=>:, **, T, H, A, B]] {
+            // reduce curry(uncurry(f)) to f
+            override def apply[P, Q](g: Uncurry[P, Q, Z])(implicit ev1: (P ** Q) === (A ** Y)) =
+              Some(g.cast(ev1).f.castB[B])
+          })
+
         override def apply[X, Y](f: Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) =
           f.f.visit(new f.f.OptVisitor[FreeCCC[:=>:, **, T, H, A, B]] {
             // reduce uncurry(curry(f)) to f
