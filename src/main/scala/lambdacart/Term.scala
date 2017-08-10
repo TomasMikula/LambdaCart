@@ -224,6 +224,8 @@ final class CodeTerm[A, B](val unwrap: FreeCCC[:⨪>:, **, Unit, Hom, A, B]) {
         App(CodeTerm.this.data, a)
     })
 
+  override def toString = unwrap.toString
+
 
   /* Syntax */
 
