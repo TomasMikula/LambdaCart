@@ -1,6 +1,7 @@
 package lambdacart
 
 import lambdacart.util.{~~>, LeibnizOps}
+import lambdacart.util.typealigned.{ACons, AJust}
 import scalaz.Leibniz
 import scalaz.Leibniz.===
 
@@ -280,6 +281,7 @@ object CodeTerm {
   }
 
   trait Visitor[A, B, R] extends FreeCCC.Visitor[:⨪>:, **, Unit, Hom, A, B, R] {
+    import FreeCCC._
 
     def casePrimitive    (f: A :->: B)                                         : R
     def caseConstVar     (b: Var[B])                                           : R
@@ -292,7 +294,14 @@ object CodeTerm {
     def caseCurry  [X, Y](f: φ[(A**X), Y])       (implicit ev: Hom[X,Y] === B) : R
     def caseUncurry[X, Y](f: φ[X, Hom[Y, B]])    (implicit ev: (X ** Y) === A) : R
 
-    final override def apply[X]   (f: Compose[A, X, B])                              = caseCompose(wrap(f.f), wrap(f.g))
+    final override def apply(f: Sequence[A, B]) = f.fs match {
+      case AJust(f)     => f.visit(this)
+      case c @ ACons(f, fs) => fs match {
+        case AJust(g) => caseCompose(wrap(g), wrap(f))
+        case fs       => caseCompose(wrap(Sequence(fs)), wrap(f))
+      }
+    }
+
     final override def apply      (f: Id[A]           )(implicit ev:        A === B) = caseId
     final override def apply[X]   (f: Fst[B, X]       )(implicit ev: (B ** X) === A) = caseFst
     final override def apply[X]   (f: Snd[X, B]       )(implicit ev: (X ** B) === A) = caseSnd

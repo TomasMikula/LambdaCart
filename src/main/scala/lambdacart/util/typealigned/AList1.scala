@@ -57,6 +57,9 @@ sealed abstract class AList1[F[_, _], A, B] {
   def ++[C](that: AList1[F, B, C]): AList1[F, A, C] =
     this ::: that
 
+  def :+[C](f: F[B, C]): AList1[F, A, C] =
+    this ::: AList1(f)
+
   def reverse: Composed1[F, A, B] = {
     @inline def pair[X](acc: Composed1[F, A, X], fs: AList1[F, X, B]) =
       APair[Composed1[F, A, ?], AList1[F, ?, B], X](acc, fs)
@@ -155,6 +158,15 @@ sealed abstract class AList1[F[_, _], A, B] {
 
   def sum[S](φ: F ~~> λ[(α, β) => S])(implicit S: Semigroup[S]): S =
     foldMap[λ[(α, β) => S]](φ)(S.compose)
+
+  def size: Int = {
+    @tailrec def go(acc: Int, fs: AList1[F, _, _]): Int = fs match {
+      case ACons(_, fs) => go(acc + 1, fs)
+      case AJust(_)     =>    acc + 1
+    }
+
+    go(0, this)
+  }
 
   def toList: AList[F, A, B] = AList(this)
 }

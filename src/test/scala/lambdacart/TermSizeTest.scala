@@ -16,31 +16,31 @@ class TermSizeTest extends FunSuite {
   }
 
   test("x => x ** x") {
-    assert(φ[X, X**X](x => x ** x).size == 137) // should be 3
+    assert(φ[X, X**X](x => x ** x).size == 116) // should be 3
   }
 
   test("x => y => x ** y") {
-    assert(φ[X, Y, X**Y]((x, y) => x ** y).size == 198) // was 44 // should be 2 (curry(id))
+    assert(φ[X, Y, X**Y]((x, y) => x ** y).size == 111) // was 44 // should be 2 (curry(id))
   }
 
   test("x => y => y ** x") {
-    assert(φ[X, Y, Y**X]((x, y) => y ** x).size == 216) // was 56 // should be 4 (curry(prod(snd, fst)))
+    assert(φ[X, Y, Y**X]((x, y) => y ** x).size == 183) // was 56 // should be 4 (curry(prod(snd, fst)))
   }
 
   test("xy => xy._1") {
-    assert(φ[X ** Y, X](xy => xy._1).size == 7) // should be 1 (fst)
+    assert(φ[X ** Y, X](xy => xy._1).size == 1)
   }
 
   test("xy => xy._2") {
-    assert(φ[X ** Y, Y](xy => xy._2).size == 7) // should be 1 (snd)
+    assert(φ[X ** Y, Y](xy => xy._2).size == 1)
   }
 
   test("x => y => z => x ** (y ** z)") {
-    assert(φ[X, Y, Z, X**(Y**Z)]((x, y, z) => x ** (y ** z)).size == 1207) // was 213
+    assert(φ[X, Y, Z, X**(Y**Z)]((x, y, z) => x ** (y ** z)).size == 848) // was 213
   }
 
   test("x => y => z => (x ** y) ** z") {
-    assert(φ[X, Y, Z, (X**Y)**Z]((x, y, z) => (x ** y) ** z).size == 1477) // was 169
+    assert(φ[X, Y, Z, (X**Y)**Z]((x, y, z) => (x ** y) ** z).size == 857) // was 169
   }
 
   private def assocR[A, B, C]: φ[(A**B)**C, A**(B**C)] =
@@ -50,23 +50,23 @@ class TermSizeTest extends FunSuite {
     φ(abc => (abc._1 ** abc._2._1) ** abc._2._2)
 
   test("assocR") {
-    assert(assocR[X, Y, Z].size == 387) // should be no more than 9
+    assert(assocR[X, Y, Z].size == 242) // should be no more than 9
   }
 
   test("assocL") {
-    assert(assocL[X, Y, Z].size == 477) // should be no more than 9
+    assert(assocL[X, Y, Z].size == 323) // should be no more than 9
   }
 
   test("assocL . assocR") { // should reduce to identity
-    assert(φ((xyz: $[(X**Y)**Z]) => assocL(assocR(xyz))).size == 877) // should be 1
+    assert(φ((xyz: $[(X**Y)**Z]) => assocL(assocR(xyz))).size == 564) // should be 1
   }
 
   test("assocR . assocR") { // should reduce to identity
-    assert(φ((xyz: $[X**(Y**Z)]) => assocR(assocL(xyz))).size == 877) // should be 1
+    assert(φ((xyz: $[X**(Y**Z)]) => assocR(assocL(xyz))).size == 564) // should be 1
   }
 
   test("x => y => x") {
-    assert(φ[X, Y, X]((x, y) => x).size == 44) // was 4
+    assert(φ[X, Y, X]((x, y) => x).size == 40) // was 4
   }
 
   test("x => y => y") {
@@ -74,35 +74,35 @@ class TermSizeTest extends FunSuite {
   }
 
   test("x => y => z => x") {
-    assert(φ[X, Y, Z, X]((x, y, z) => x).size == 117) // was 45
+    assert(φ[X, Y, Z, X]((x, y, z) => x).size == 78) // was 45
   }
 
   test("x => y => z => z") {
-    assert(φ[X, Y, Z, Z]((x, y, z) => z).size == 9) // was 7
+    assert(φ[X, Y, Z, Z]((x, y, z) => z).size == 7)
   }
 
   test("flip") {
-    assert(φ[X**Y, Y**X](xy => xy._2 ** xy._1).size == 183) // should be 3
+    assert(φ[X**Y, Y**X](xy => xy._2 ** xy._1).size == 145) // should be 3
   }
 
   test("flip . flip") { // should reduce to identity
     def flip[A, B]: φ[A**B, B**A] = φ(ab => ab._2 ** ab._1)
-    assert(φ[X**Y, X**Y](xy => flip(flip(xy))).size == 379) // should be 1 (identity)
+    assert(φ[X**Y, X**Y](xy => flip(flip(xy))).size == 289) // should be 1 (identity)
   }
 
   test("x => inc(x)") {
-    assert(φ[Nat, Nat](x => inc(x)).size == 7) // should be 1
+    assert(φ[Nat, Nat](x => inc(x)).size == 1)
   }
 
   test("forLoop") {
-    assert(sizeOf(forLoop[X]) == 11558) // was 3622
+    assert(sizeOf(forLoop[X]) == 10008) // was 3622
   }
 
   test("plus") {
-    assert(sizeOf(plus) == 13113) // was 3961
+    assert(sizeOf(plus) == 11486) // was 3961
   }
 
   test("times") {
-    assert(sizeOf(times) == 25175) // was 7793
+    assert(sizeOf(times) == 21871) // was 7793
   }
 }

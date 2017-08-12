@@ -1,7 +1,9 @@
 package lambdacart
 
+import scalaz.Category
+
 /** Cartesian closed category. */
-trait CCC[:=>:[_, _]] {
+trait CCC[:=>:[_, _]] extends Category[:=>:] {
   /** product */
   type **[A, B]
 

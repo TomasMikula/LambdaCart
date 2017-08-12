@@ -2,46 +2,51 @@ package lambdacart
 
 import lambdacart.util.~~>
 import lambdacart.util.LeibnizOps
+import lambdacart.util.typealigned.{AJust, AList1, LeftAction}
 import scala.annotation.tailrec
+import scalaz.~>
 import scalaz.Leibniz.===
+import scalaz.std.anyVal._
 
-sealed abstract class FreeCCC[:=>:[_, _], **[_, _], T, H[_, _], A, B] {
+sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] {
   import FreeCCC._
 
-  type Visitor[R] = FreeCCC.Visitor[:=>:, **, T, H, A, B, R]
-  type OptVisitor[R] = FreeCCC.OptVisitor[:=>:, **, T, H, A, B, R]
-  type Transformer = OptVisitor[FreeCCC[:=>:, **, T, H, A, B]]
+  type :=>:[α, β] = FreeCCC[:->:, **, T, H, α, β]
 
-  type RewriteRule = FreeCCC.RewriteRule[:=>:, **, T, H]
+  type Visitor[R] = FreeCCC.Visitor[:->:, **, T, H, A, B, R]
+  type OptVisitor[R] = FreeCCC.OptVisitor[:->:, **, T, H, A, B, R]
+  type BinTransformer = FreeCCC.BinTransformer[:->:, **, T, H, A, B]
+
+  type RewriteRule = FreeCCC.RewriteRule[:->:, **, T, H]
 
   /** Workaround for Scala's broken GADT pattern matching. */
   def visit[R](v: Visitor[R]): R
 
-  def castA[X](implicit ev: A === X): FreeCCC[:=>:, **, T, H, X, B] =
-    ev.subst[FreeCCC[:=>:, **, T, H, ?, B]](this)
+  def castA[X](implicit ev: A === X): FreeCCC[:->:, **, T, H, X, B] =
+    ev.subst[FreeCCC[:->:, **, T, H, ?, B]](this)
 
-  def castB[Y](implicit ev: B === Y): FreeCCC[:=>:, **, T, H, A, Y] =
-    ev.subst[FreeCCC[:=>:, **, T, H, A, ?]](this)
+  def castB[Y](implicit ev: B === Y): FreeCCC[:->:, **, T, H, A, Y] =
+    ev.subst[FreeCCC[:->:, **, T, H, A, ?]](this)
 
-  def const[Z]: FreeCCC[:=>:, **, T, H, Z, H[A, B]] =
-    (this compose snd[:=>:, **, T, H, Z, A]).curry
+  def const[Z]: FreeCCC[:->:, **, T, H, Z, H[A, B]] =
+    (this compose snd[:->:, **, T, H, Z, A]).curry
 
-  def prod[C](that: FreeCCC[:=>:, **, T, H, A, C]): FreeCCC[:=>:, **, T, H, A, B ** C] =
+  def prod[C](that: FreeCCC[:->:, **, T, H, A, C]): FreeCCC[:->:, **, T, H, A, B ** C] =
     FreeCCC.prod(this, that)
 
-  def compose[Z](that: FreeCCC[:=>:, **, T, H, Z, A]): FreeCCC[:=>:, **, T, H, Z, B] =
+  def compose[Z](that: FreeCCC[:->:, **, T, H, Z, A]): FreeCCC[:->:, **, T, H, Z, B] =
     FreeCCC.compose(this, that)
 
-  def curry[X, Y](implicit ev: A === (X ** Y)): FreeCCC[:=>:, **, T, H, X, H[Y, B]] =
+  def curry[X, Y](implicit ev: A === (X ** Y)): FreeCCC[:->:, **, T, H, X, H[Y, B]] =
     FreeCCC.curry(this.castA(ev))
 
-  def uncurry[X, Y](implicit ev: B === H[X, Y]): FreeCCC[:=>:, **, T, H, A**X, Y] =
+  def uncurry[X, Y](implicit ev: B === H[X, Y]): FreeCCC[:->:, **, T, H, A**X, Y] =
     FreeCCC.uncurry(this.castB(ev))
 
-  final def foldMap[->[_, _]](φ: :=>: ~~> ->)(implicit ccc: CCC.Aux[->, **, T, H]): A -> B =
+  final def foldMap[->[_, _]](φ: :->: ~~> ->)(implicit ccc: CCC.Aux[->, **, T, H]): A -> B =
     visit[A -> B](new Visitor[A -> B] {
       def apply      (f:     Lift[A, B]   ) = φ[A, B](f.f)
-      def apply[X]   (f:  Compose[A, X, B]) = ccc.compose(f.f.foldMap(φ), f.g.foldMap(φ))
+      def apply      (f: Sequence[A, B]   ) = f.fs.foldMap(ν[:=>: ~~> ->][α, β](_.foldMap(φ)))
       def apply      (f:       Id[A]      )(implicit ev:        A === B) = ev.lift[A -> ?](ccc.id[A])
       def apply[X]   (f:      Fst[B, X]   )(implicit ev: (B ** X) === A) = ev.lift[? -> B](ccc.fst[B, X])
       def apply[X]   (f:      Snd[X, B]   )(implicit ev: (X ** B) === A) = ev.lift[? -> B](ccc.snd[X, B])
@@ -51,16 +56,16 @@ sealed abstract class FreeCCC[:=>:[_, _], **[_, _], T, H[_, _], A, B] {
       def apply[X, Y](f:  Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) = ev.lift[? -> B](ccc.uncurry(f.f.foldMap(φ)))
     })
 
-  final def fold(implicit ccc: CCC.Aux[:=>:, **, T, H]): A :=>: B =
-    foldMap(~~>.identity[:=>:])
+  final def fold(implicit ccc: CCC.Aux[:->:, **, T, H]): A :->: B =
+    foldMap(~~>.identity[:->:])
 
-  final def translate[->[_, _]](φ: :=>: ~~> ->): FreeCCC[->, **, T, H, A, B] =
-    foldMap(Λ[X, Y](f => lift(φ[X, Y](f))): :=>: ~~> FreeCCC[->, **, T, H, ?, ?])
+  final def translate[->[_, _]](φ: :->: ~~> ->): FreeCCC[->, **, T, H, A, B] =
+    foldMap(Λ[X, Y](f => lift(φ[X, Y](f))): :->: ~~> FreeCCC[->, **, T, H, ?, ?])
 
   final def size: Int = visit(new Visitor[Int] {
+    def apply      (a: Sequence[A, B]   ) = 1 + a.fs.sum(Λ[α, β](_.size): :=>: ~~> λ[(χ, υ) => Int])
     def apply[Y, Z](a:    Curry[A, Y, Z])(implicit ev:  H[Y, Z] === B) = 1 + a.f.size
     def apply[X, Y](a:  Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) = 1 + a.f.size
-    def apply[Y]   (a:  Compose[A, Y, B])                              = 1 + a.f.size + a.g.size
     def apply[Y, Z](a:     Prod[A, Y, Z])(implicit ev:   (Y**Z) === B) = 1 + a.f.size + a.g.size
     def apply[Y]   (a:      Fst[B, Y])   (implicit ev:   (B**Y) === A) = 1
     def apply[X]   (a:      Snd[X, B])   (implicit ev:   (X**B) === A) = 1
@@ -73,7 +78,7 @@ sealed abstract class FreeCCC[:=>:[_, _], **[_, _], T, H[_, _], A, B] {
     * Doesn't recursively descend to child nodes.
     */
   @tailrec
-  private def rewrite(rules: List[RewriteRule]): Option[FreeCCC[:=>:, **, T, H, A, B]] =
+  private def rewrite(rules: List[RewriteRule]): Option[FreeCCC[:->:, **, T, H, A, B]] =
     rules match {
       case r :: rs => r[A, B](this) match {
         case Some(f) => Some(f)
@@ -83,10 +88,10 @@ sealed abstract class FreeCCC[:=>:[_, _], **[_, _], T, H[_, _], A, B] {
     }
 
   @tailrec
-  private def optimize(rules: List[RewriteRule]): FreeCCC[:=>:, **, T, H, A, B] = this match {
+  private def optimize(rules: List[RewriteRule]): FreeCCC[:->:, **, T, H, A, B] = this match {
     case Optimized(_) | Id() | Terminal() | Lift(_) => this
-    case _: Fst[:=>:, **, T, H, a, B] => this // case Fst() not accepted by scalac
-    case _: Snd[:=>:, **, T, H, a, B] => this // case Snd() not accepted by scalac
+    case _: Fst[:->:, **, T, H, a, B] => this // case Fst() not accepted by scalac
+    case _: Snd[:->:, **, T, H, a, B] => this // case Snd() not accepted by scalac
     case f =>
       val g = f.optimizeChildren(rules)
       g.rewrite(rules) match {
@@ -95,19 +100,19 @@ sealed abstract class FreeCCC[:=>:[_, _], **[_, _], T, H[_, _], A, B] {
       }
   }
 
-  private[FreeCCC] def optim: FreeCCC[:=>:, **, T, H, A, B] =
+  private[FreeCCC] def optim: FreeCCC[:->:, **, T, H, A, B] =
     optimize(genericRules)
 
-  private def optimizeChildren(rules: List[RewriteRule]): FreeCCC[:=>:, **, T, H, A, B] =
-    visit(new Visitor[FreeCCC[:=>:, **, T, H, A, B]] {
+  private def optimizeChildren(rules: List[RewriteRule]): FreeCCC[:->:, **, T, H, A, B] =
+    visit(new Visitor[FreeCCC[:->:, **, T, H, A, B]] {
       def apply   (f:     Lift[A, B])                              = f
       def apply   (f:       Id[A]   )(implicit ev:        A === B) = f.castB[B]
       def apply[X](f:      Fst[B, X])(implicit ev: (B ** X) === A) = f.castA[A]
       def apply[X](f:      Snd[X, B])(implicit ev: (X ** B) === A) = f.castA[A]
       def apply   (f: Terminal[A]   )(implicit ev:        T === B) = f.castB[B]
 
-      def apply[X](f: Compose[A, X, B]) =
-        Compose(f.f.optimize(rules), f.g.optimize(rules))
+      def apply(f: Sequence[A, B]) =
+        Sequence(f.fs.map(ν[:=>: ~~> :=>:][α, β](_.optimize(rules))))
 
       def apply[X, Y](f: Prod[A, X, Y])(implicit ev: (X ** Y) === B) =
         Prod(f.f.optimize(rules), f.g.optimize(rules)).castB[B]
@@ -121,74 +126,76 @@ sealed abstract class FreeCCC[:=>:[_, _], **[_, _], T, H[_, _], A, B] {
 }
 
 object FreeCCC {
-  case class Lift[:=>:[_, _], **[_, _], T, H[_, _], A, B](f: A :=>: B) extends FreeCCC[:=>:, **, T, H, A, B] {
+  case class Lift[:->:[_, _], **[_, _], T, H[_, _], A, B](f: A :->: B) extends FreeCCC[:->:, **, T, H, A, B] {
     def visit[R](v: Visitor[R]): R = v(this)
   }
 
-  case class Id[:=>:[_, _], **[_, _], T, H[_, _], A]() extends FreeCCC[:=>:, **, T, H, A, A] {
+  case class Id[:->:[_, _], **[_, _], T, H[_, _], A]() extends FreeCCC[:->:, **, T, H, A, A] {
     def visit[R](v: Visitor[R]): R = v(this)
   }
 
-  case class Compose[:=>:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:=>:, **, T, H, B, C], g: FreeCCC[:=>:, **, T, H, A, B]) extends FreeCCC[:=>:, **, T, H, A, C] {
+  case class Sequence[:->:[_, _], **[_, _], T, H[_, _], A, B](fs: AList1[FreeCCC[:->:, **, T, H, ?, ?], A, B]) extends FreeCCC[:->:, **, T, H, A, B] {
     def visit[R](v: Visitor[R]): R = v(this)
   }
 
-  case class Fst[:=>:[_, _], **[_, _], T, H[_, _], A, B]() extends FreeCCC[:=>:, **, T, H, A ** B, A] {
+  case class Fst[:->:[_, _], **[_, _], T, H[_, _], A, B]() extends FreeCCC[:->:, **, T, H, A ** B, A] {
     def visit[R](v: Visitor[R]): R = v(this)
   }
 
-  case class Snd[:=>:[_, _], **[_, _], T, H[_, _], A, B]() extends FreeCCC[:=>:, **, T, H, A ** B, B] {
+  case class Snd[:->:[_, _], **[_, _], T, H[_, _], A, B]() extends FreeCCC[:->:, **, T, H, A ** B, B] {
     def visit[R](v: Visitor[R]): R = v(this)
   }
 
-  case class Prod[:=>:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:=>:, **, T, H, A, B], g: FreeCCC[:=>:, **, T, H, A, C]) extends FreeCCC[:=>:, **, T, H, A, B ** C] {
+  case class Prod[:->:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:->:, **, T, H, A, B], g: FreeCCC[:->:, **, T, H, A, C]) extends FreeCCC[:->:, **, T, H, A, B ** C] {
     def visit[R](v: Visitor[R]): R = v(this)
 
-    def cast[Y, Z](implicit ev: (B ** C) === (Y ** Z)): Prod[:=>:, **, T, H, A, Y, Z] =
-      this.asInstanceOf[Prod[:=>:, **, T, H, A, Y, Z]]
+    def cast[Y, Z](implicit ev: (B ** C) === (Y ** Z)): Prod[:->:, **, T, H, A, Y, Z] =
+      this.asInstanceOf[Prod[:->:, **, T, H, A, Y, Z]]
   }
 
-  case class Terminal[:=>:[_, _], **[_, _], T, H[_, _], A]() extends FreeCCC[:=>:, **, T, H, A, T] {
+  case class Terminal[:->:[_, _], **[_, _], T, H[_, _], A]() extends FreeCCC[:->:, **, T, H, A, T] {
     def visit[R](v: Visitor[R]): R = v(this)
   }
 
-  case class Curry[:=>:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:=>:, **, T, H, A ** B, C]) extends FreeCCC[:=>:, **, T, H, A, H[B, C]] {
+  case class Curry[:->:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:->:, **, T, H, A ** B, C]) extends FreeCCC[:->:, **, T, H, A, H[B, C]] {
     def visit[R](v: Visitor[R]): R = v(this)
 
-    def cast[Y, Z](implicit ev: H[B, C] === H[Y, Z]): Curry[:=>:, **, T, H, A, Y, Z] =
-      this.asInstanceOf[Curry[:=>:, **, T, H, A, Y, Z]]
+    def cast[Y, Z](implicit ev: H[B, C] === H[Y, Z]): Curry[:->:, **, T, H, A, Y, Z] =
+      this.asInstanceOf[Curry[:->:, **, T, H, A, Y, Z]]
   }
 
-  case class Uncurry[:=>:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:=>:, **, T, H, A, H[B, C]]) extends FreeCCC[:=>:, **, T, H, A ** B, C] {
+  case class Uncurry[:->:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:->:, **, T, H, A, H[B, C]]) extends FreeCCC[:->:, **, T, H, A ** B, C] {
     def visit[R](v: Visitor[R]): R = v(this)
 
-    def cast[X, Y](implicit ev: (A ** B) === (X ** Y)): Uncurry[:=>:, **, T, H, X, Y, C] =
-      this.asInstanceOf[Uncurry[:=>:, **, T, H, X, Y, C]]
+    def cast[X, Y](implicit ev: (A ** B) === (X ** Y)): Uncurry[:->:, **, T, H, X, Y, C] =
+      this.asInstanceOf[Uncurry[:->:, **, T, H, X, Y, C]]
   }
 
   /** Marker that the tree below this node is optimized,
     * and thus optimization will not try to rewrite it.
     */
   private[FreeCCC]
-  case class Optimized[:=>:[_, _], **[_, _], T, H[_, _], A, B](f: FreeCCC[:=>:, **, T, H, A, B]) extends FreeCCC[:=>:, **, T, H, A, B] {
+  case class Optimized[:->:[_, _], **[_, _], T, H[_, _], A, B](f: FreeCCC[:->:, **, T, H, A, B]) extends FreeCCC[:->:, **, T, H, A, B] {
     def visit[R](v: Visitor[R]): R = f.visit(v)
     override def toString = f.toString
   }
 
 
-  trait Visitor[:=>:[_, _], **[_, _], T, H[_, _], A, B, R] {
-    type Lift[X, Y]       = FreeCCC.Lift    [:=>:, **, T, H, X, Y]
-    type Compose[X, Y, Z] = FreeCCC.Compose [:=>:, **, T, H, X, Y, Z]
-    type Id[X]            = FreeCCC.Id      [:=>:, **, T, H, X]
-    type Prod[X, Y, Z]    = FreeCCC.Prod    [:=>:, **, T, H, X, Y, Z]
-    type Terminal[X]      = FreeCCC.Terminal[:=>:, **, T, H, X]
-    type Fst[X, Y]        = FreeCCC.Fst     [:=>:, **, T, H, X, Y]
-    type Snd[X, Y]        = FreeCCC.Snd     [:=>:, **, T, H, X, Y]
-    type Curry[X, Y, Z]   = FreeCCC.Curry   [:=>:, **, T, H, X, Y, Z]
-    type Uncurry[X, Y, Z] = FreeCCC.Uncurry [:=>:, **, T, H, X, Y, Z]
+  trait Visitor[:->:[_, _], **[_, _], T, H[_, _], A, B, R] {
+    type :=>:[X, Y] = FreeCCC[:->:, **, T, H, X, Y]
+
+    type Lift[X, Y]       = FreeCCC.Lift    [:->:, **, T, H, X, Y]
+    type Sequence[X, Y]   = FreeCCC.Sequence[:->:, **, T, H, X, Y]
+    type Id[X]            = FreeCCC.Id      [:->:, **, T, H, X]
+    type Prod[X, Y, Z]    = FreeCCC.Prod    [:->:, **, T, H, X, Y, Z]
+    type Terminal[X]      = FreeCCC.Terminal[:->:, **, T, H, X]
+    type Fst[X, Y]        = FreeCCC.Fst     [:->:, **, T, H, X, Y]
+    type Snd[X, Y]        = FreeCCC.Snd     [:->:, **, T, H, X, Y]
+    type Curry[X, Y, Z]   = FreeCCC.Curry   [:->:, **, T, H, X, Y, Z]
+    type Uncurry[X, Y, Z] = FreeCCC.Uncurry [:->:, **, T, H, X, Y, Z]
 
     def apply      (f:     Lift[A, B]   )                              : R
-    def apply[X]   (f:  Compose[A, X, B])                              : R
+    def apply      (f: Sequence[A, B]   )                              : R
     def apply      (f:       Id[A]      )(implicit ev:        A === B) : R
     def apply[X]   (f:      Fst[B, X]   )(implicit ev: (B ** X) === A) : R
     def apply[X]   (f:      Snd[X, B]   )(implicit ev: (X ** B) === A) : R
@@ -198,10 +205,10 @@ object FreeCCC {
     def apply[X, Y](f:  Uncurry[X, Y, B])(implicit e1: (X ** Y) === A) : R
   }
 
-  trait OptVisitor[:=>:[_, _], **[_, _], T, H[_, _], A, B, R]
-  extends Visitor[:=>:, **, T, H, A, B, Option[R]] {
+  trait OptVisitor[:->:[_, _], **[_, _], T, H[_, _], A, B, R]
+  extends Visitor[:->:, **, T, H, A, B, Option[R]] {
     def apply      (f:     Lift[A, B]   )                              = Option.empty[R]
-    def apply[X]   (f:  Compose[A, X, B])                              = Option.empty[R]
+    def apply      (f: Sequence[A, B]   )                              = Option.empty[R]
     def apply      (f:       Id[A]      )(implicit ev:        A === B) = Option.empty[R]
     def apply[X]   (f:      Fst[B, X]   )(implicit ev: (B ** X) === A) = Option.empty[R]
     def apply[X]   (f:      Snd[X, B]   )(implicit ev: (X ** B) === A) = Option.empty[R]
@@ -211,106 +218,135 @@ object FreeCCC {
     def apply[X, Y](f:  Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) = Option.empty[R]
   }
 
-  trait RewriteRule[:=>:[_, _], **[_, _], T, H[_, _]] {
-    def apply[A, B]: FreeCCC[:=>:, **, T, H, A, B] => Option[FreeCCC[:=>:, **, T, H, A, B]]
+  trait BinTransformer[:->:[_, _], **[_, _], T, H[_, _], A, B]
+  extends OptVisitor[:->:, **, T, H, A, B, FreeCCC[:->:, **, T, H, A, B]] { self =>
+    def apply[X, Y, Z](f: X :=>: Y, g: Y :=>: Z): Option[X :=>: Z] = None
+
+    final override def apply(f: Sequence[A, B]): Option[A :=>: B] = {
+      type G[α] = AList1[:=>:, α, B]
+      f.fs.foldRight1[G](λ[(? :=>: B) ~> G](AList1(_)))(ν[LeftAction[G, :=>:]][α, β]((f, acc) => self(f, acc.head) match {
+        case Some(f) => f :: acc.tail
+        case None    => f :: acc
+      })) match {
+        case AJust(f) => Some(f)
+        case fs       => if(fs.size < f.fs.size) Some(Sequence(fs)) else None
+      }
+    }
   }
 
-  implicit def cccInstance[:=>:[_, _], &[_, _], T, H[_, _]]: CCC.Aux[FreeCCC[:=>:, &, T, H, ?, ?], &, T, H] =
-    new CCC[FreeCCC[:=>:, &, T, H, ?, ?]] {
+  trait RewriteRule[:->:[_, _], **[_, _], T, H[_, _]] {
+    type :=>:[A, B] = FreeCCC[:->:, **, T, H, A, B]
+
+    def apply[A, B]: (A :=>: B) => Option[A :=>: B]
+  }
+
+  trait Rewriter[:->:[_, _], **[_, _], T, H[_, _]] extends RewriteRule[:->:, **, T, H] {
+    def visitor[A, B]: OptVisitor[:->:, **, T, H, A, B, A :=>: B]
+
+    final override def apply[A, B]: (A :=>: B) => Option[A :=>: B] =
+      _.visit(visitor[A, B])
+  }
+
+  implicit def cccInstance[:->:[_, _], &[_, _], T, H[_, _]]: CCC.Aux[FreeCCC[:->:, &, T, H, ?, ?], &, T, H] =
+    new CCC[FreeCCC[:->:, &, T, H, ?, ?]] {
       type **[A, B] = A & B
       type Unit = T
       type Hom[A, B] = H[A, B]
 
-      type ->[A, B] = FreeCCC[:=>:, &, T, H, A, B]
+      type ->[A, B] = FreeCCC[:->:, &, T, H, A, B]
 
-      def id[A]: A -> A = Id()
-      def compose[A, B, C](f: B -> C, g: A -> B): A -> C = Compose(f, g)
-      def fst[A, B]: (A & B) -> A = Fst()
-      def snd[A, B]: (A & B) -> B = Snd()
-      def prod[A, B, C](f: A -> B, g: A -> C): A -> (B & C) = Prod(f, g)
-      def terminal[A]: A -> T = Terminal()
-      def curry[A, B, C](f: (A & B) -> C): A -> H[B, C] = Curry[:=>:, &, T, H, A, B, C](f)
-      def uncurry[A, B, C](f: A -> H[B, C]): (A & B) -> C = Uncurry(f)
+      def id[A]: A -> A = FreeCCC.id
+      def compose[A, B, C](f: B -> C, g: A -> B): A -> C = FreeCCC.compose(f, g)
+      def fst[A, B]: (A & B) -> A = FreeCCC.fst
+      def snd[A, B]: (A & B) -> B = FreeCCC.snd
+      def prod[A, B, C](f: A -> B, g: A -> C): A -> (B & C) = FreeCCC.prod(f, g)
+      def terminal[A]: A -> T = FreeCCC.terminal
+      def curry[A, B, C](f: (A & B) -> C): A -> H[B, C] = FreeCCC.curry(f)
+      def uncurry[A, B, C](f: A -> H[B, C]): (A & B) -> C = FreeCCC.uncurry(f)
     }
 
   /* Smart constructors */
 
-  def lift[:=>:[_, _], **[_, _], T, H[_, _], A, B](f: A :=>: B): FreeCCC[:=>:, **, T, H, A, B] = Lift(f)
+  def lift[:->:[_, _], **[_, _], T, H[_, _], A, B](f: A :->: B): FreeCCC[:->:, **, T, H, A, B] = Lift(f)
 
   // Cartesian closed operations
-  def id[:=>:[_, _], **[_, _], T, H[_, _], A]: FreeCCC[:=>:, **, T, H, A, A] = Id()
-  def compose[:=>:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:=>:, **, T, H, B, C], g: FreeCCC[:=>:, **, T, H, A, B]): FreeCCC[:=>:, **, T, H, A, C] = Compose(f, g).optim
-  def fst[:=>:[_, _], **[_, _], T, H[_, _], A, B]: FreeCCC[:=>:, **, T, H, (A**B), A] = Fst()
-  def snd[:=>:[_, _], **[_, _], T, H[_, _], A, B]: FreeCCC[:=>:, **, T, H, (A**B), B] = Snd()
-  def prod[:=>:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:=>:, **, T, H, A, B], g: FreeCCC[:=>:, **, T, H, A, C]): FreeCCC[:=>:, **, T, H, A, (B**C)] = Prod(f, g).optim
-  def terminal[:=>:[_, _], **[_, _], T, H[_, _], A]: FreeCCC[:=>:, **, T, H, A, T] = Terminal()
-  def curry[:=>:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:=>:, **, T, H, (A**B), C]): FreeCCC[:=>:, **, T, H, A, H[B, C]] = Curry(f).optim
-  def uncurry[:=>:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:=>:, **, T, H, A, H[B, C]]): FreeCCC[:=>:, **, T, H, (A**B), C] = Uncurry(f).optim
+  def id[:->:[_, _], **[_, _], T, H[_, _], A]: FreeCCC[:->:, **, T, H, A, A] = Id()
+  def compose[:->:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:->:, **, T, H, B, C], g: FreeCCC[:->:, **, T, H, A, B]): FreeCCC[:->:, **, T, H, A, C] = Sequence(g :: AList1(f)).optim
+  def fst[:->:[_, _], **[_, _], T, H[_, _], A, B]: FreeCCC[:->:, **, T, H, (A**B), A] = Fst()
+  def snd[:->:[_, _], **[_, _], T, H[_, _], A, B]: FreeCCC[:->:, **, T, H, (A**B), B] = Snd()
+  def prod[:->:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:->:, **, T, H, A, B], g: FreeCCC[:->:, **, T, H, A, C]): FreeCCC[:->:, **, T, H, A, (B**C)] = Prod(f, g).optim
+  def terminal[:->:[_, _], **[_, _], T, H[_, _], A]: FreeCCC[:->:, **, T, H, A, T] = Terminal()
+  def curry[:->:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:->:, **, T, H, (A**B), C]): FreeCCC[:->:, **, T, H, A, H[B, C]] = Curry(f).optim
+  def uncurry[:->:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:->:, **, T, H, A, H[B, C]]): FreeCCC[:->:, **, T, H, (A**B), C] = Uncurry(f).optim
 
 
   // derived Cartesian closed operations
 
-  def diag[:=>:[_, _], **[_, _], T, H[_, _], A]: FreeCCC[:=>:, **, T, H, A, (A ** A)] =
+  def diag[:->:[_, _], **[_, _], T, H[_, _], A]: FreeCCC[:->:, **, T, H, A, (A ** A)] =
     prod(id, id)
 
-  def parallel[:=>:[_, _], **[_, _], T, H[_, _], A1, A2, B1, B2](
-      f: FreeCCC[:=>:, **, T, H, A1, B1],
-      g: FreeCCC[:=>:, **, T, H, A2, B2]
-  ): FreeCCC[:=>:, **, T, H, (A1**A2), (B1**B2)] =
+  def parallel[:->:[_, _], **[_, _], T, H[_, _], A1, A2, B1, B2](
+      f: FreeCCC[:->:, **, T, H, A1, B1],
+      g: FreeCCC[:->:, **, T, H, A2, B2]
+  ): FreeCCC[:->:, **, T, H, (A1**A2), (B1**B2)] =
     prod(compose(f, fst), compose(g, snd))
 
-  def constA[:=>:[_, _], **[_, _], T, H[_, _], A, B]: FreeCCC[:=>:, **, T, H, A, H[B, A]] =
-    curry(fst[:=>:, **, T, H, A, B])
+  def constA[:->:[_, _], **[_, _], T, H[_, _], A, B]: FreeCCC[:->:, **, T, H, A, H[B, A]] =
+    curry(fst[:->:, **, T, H, A, B])
 
-  def getConst[:=>:[_, _], **[_, _], T, H[_, _], A, B](f: FreeCCC[:=>:, **, T, H, T, H[A, B]]): FreeCCC[:=>:, **, T, H, A, B] =
-    compose(uncurry(f), prod(terminal[:=>:, **, T, H, A], id[:=>:, **, T, H, A]))
+  def getConst[:->:[_, _], **[_, _], T, H[_, _], A, B](f: FreeCCC[:->:, **, T, H, T, H[A, B]]): FreeCCC[:->:, **, T, H, A, B] =
+    compose(uncurry(f), prod(terminal[:->:, **, T, H, A], id[:->:, **, T, H, A]))
 
-  def andThen[:=>:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:=>:, **, T, H, A, B], g: FreeCCC[:=>:, **, T, H, B, C]): FreeCCC[:=>:, **, T, H, A, C] =
+  def andThen[:->:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:->:, **, T, H, A, B], g: FreeCCC[:->:, **, T, H, B, C]): FreeCCC[:->:, **, T, H, A, C] =
     compose(g, f)
 
-  def flip[:=>:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:=>:, **, T, H, (A**B), C]): FreeCCC[:=>:, **, T, H, (B**A), C] =
-    compose(f, prod(snd[:=>:, **, T, H, B, A], fst[:=>:, **, T, H, B, A]))
+  def flip[:->:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:->:, **, T, H, (A**B), C]): FreeCCC[:->:, **, T, H, (B**A), C] =
+    compose(f, prod(snd[:->:, **, T, H, B, A], fst[:->:, **, T, H, B, A]))
 
-  def swap[:=>:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:=>:, **, T, H, A, H[B, C]]): FreeCCC[:=>:, **, T, H, B, H[A, C]] =
+  def swap[:->:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:->:, **, T, H, A, H[B, C]]): FreeCCC[:->:, **, T, H, B, H[A, C]] =
     curry(flip(uncurry(f)))
 
-  def eval[:=>:[_, _], **[_, _], T, H[_, _], A, B]: FreeCCC[:=>:, **, T, H, H[A, B] ** A, B] =
-    uncurry(id[:=>:, **, T, H, H[A, B]])
+  def eval[:->:[_, _], **[_, _], T, H[_, _], A, B]: FreeCCC[:->:, **, T, H, H[A, B] ** A, B] =
+    uncurry(id[:->:, **, T, H, H[A, B]])
 
-  def assocR[:=>:[_, _], **[_, _], T, H[_, _], A, B, C]: FreeCCC[:=>:, **, T, H, ((A**B)**C), (A**(B**C))] = {
-    val pa = compose(fst[:=>:, **, T, H, A, B], fst[:=>:, **, T, H, A**B, C])
-    val pb = compose(snd[:=>:, **, T, H, A, B], fst[:=>:, **, T, H, A**B, C])
-    val pc = snd[:=>:, **, T, H, A**B, C]
+  def assocR[:->:[_, _], **[_, _], T, H[_, _], A, B, C]: FreeCCC[:->:, **, T, H, ((A**B)**C), (A**(B**C))] = {
+    val pa = compose(fst[:->:, **, T, H, A, B], fst[:->:, **, T, H, A**B, C])
+    val pb = compose(snd[:->:, **, T, H, A, B], fst[:->:, **, T, H, A**B, C])
+    val pc = snd[:->:, **, T, H, A**B, C]
     prod(pa, prod(pb, pc))
   }
 
-  def assocL[:=>:[_, _], **[_, _], T, H[_, _], A, B, C]: FreeCCC[:=>:, **, T, H, (A**(B**C)), ((A**B)**C)] = {
-    val pa = fst[:=>:, **, T, H, A, B**C]
-    val pb = compose(fst[:=>:, **, T, H, B, C], snd[:=>:, **, T, H, A, B**C])
-    val pc = compose(snd[:=>:, **, T, H, B, C], snd[:=>:, **, T, H, A, B**C])
+  def assocL[:->:[_, _], **[_, _], T, H[_, _], A, B, C]: FreeCCC[:->:, **, T, H, (A**(B**C)), ((A**B)**C)] = {
+    val pa = fst[:->:, **, T, H, A, B**C]
+    val pb = compose(fst[:->:, **, T, H, B, C], snd[:->:, **, T, H, A, B**C])
+    val pc = compose(snd[:->:, **, T, H, B, C], snd[:->:, **, T, H, A, B**C])
     prod(prod(pa, pb), pc)
   }
 
-  private[FreeCCC] def genericRules[:=>:[_, _], **[_, _], T, H[_, _]]: List[RewriteRule[:=>:, **, T, H]] = {
-    type RR = RewriteRule[:=>:, **, T, H]
+  private[FreeCCC] def genericRules[:->:[_, _], **[_, _], T, H[_, _]]: List[RewriteRule[:->:, **, T, H]] = {
+    type Rewriter = FreeCCC.Rewriter[:->:, **, T, H]
     List(
-      ν[RR][A, B](f => f.visit(new f.Transformer {
+      ν[Rewriter].visitor[A, B](new BinTransformer[:->:, **, T, H, A, B] {
         override def apply      (f:     Lift[A, B]   )                              = None
 
-        override def apply[X](f: Compose[A, X, B]) = f.f.visit(new f.f.OptVisitor[FreeCCC[:=>:, **, T, H, A, B]] {
-          // reduce `id . g` to `g`
-          override def apply(g: Id[X])(implicit ev: X === B) = Some(f.g.castB(ev))
-          // reduce `terminal . g` to `terminal`
-          override def apply(g: Terminal[X])(implicit ev: T === B) = Some((Terminal(): Terminal[A]).castB[B])
-        }).orElse(                                   f.g.visit(new f.g.OptVisitor[FreeCCC[:=>:, **, T, H, A, B]] {
-          // reduce `f . id` to `f`
-          override def apply(g: Id[A])(implicit ev: A === X) = Some(f.f.castA(ev.flip))
-          override def apply[Y, Z](p: Prod[A, Y, Z])(implicit ev: (Y ** Z) === X) =
-            f.f.visit(new f.f.OptVisitor[FreeCCC[:=>:, **, T, H, A, B]] {
+        override def apply[X, Y, Z](f: X :=>: Y, g: Y :=>: Z) = g.visit(new g.OptVisitor[X :=>: Z] {
+          // flatten compositions
+          override def apply(g: Sequence[Y, Z]) = Some(Sequence(f :: g.fs))
+          // reduce `id . f` to `f`
+          override def apply(g: Id[Y])(implicit ev: Y === Z) = Some(f.castB(ev))
+          // reduce `terminal . f` to `terminal`
+          override def apply(g: Terminal[Y])(implicit ev: T === Z) = Some((Terminal(): Terminal[X]).castB[Z])
+        }).orElse(                                   f.visit(new f.OptVisitor[X :=>: Z] {
+          // flatten compositions
+          override def apply(f: Sequence[X, Y]) = Some(Sequence(f.fs :+ g))
+          // reduce `g . id` to `g`
+          override def apply(f: Id[X])(implicit ev: X === Y) = Some(g.castA(ev.flip))
+          override def apply[P, Q](p: Prod[X, P, Q])(implicit ev: (P ** Q) === Y) =
+            g.visit(new g.OptVisitor[X :=>: Z] {
               // reduce `fst . prod(f, g)` to `f`
-              override def apply[Q](fst: Fst[B, Q])(implicit ev1: (B ** Q) === X) = Some(p.cast(ev1.flip.compose(ev)).f)
+              override def apply[U](fst: Fst[Z, U])(implicit ev1: (Z ** U) === Y) = Some(p.cast(ev1.flip.compose(ev)).f)
               // reduce `snd . prod(f, g)` to `g`
-              override def apply[Q](snd: Snd[Q, B])(implicit ev1: (Q ** B) === X) = Some(p.cast(ev1.flip.compose(ev)).g)
+              override def apply[U](snd: Snd[U, Z])(implicit ev1: (U ** Z) === Y) = Some(p.cast(ev1.flip.compose(ev)).g)
             })
         }))
 
@@ -321,19 +357,19 @@ object FreeCCC {
         override def apply      (f: Terminal[A]      )(implicit ev:        T === B) = None
 
         override def apply[Y, Z](f: Curry[A, Y, Z])(implicit ev: H[Y, Z] === B) =
-          f.f.visit(new f.f.OptVisitor[FreeCCC[:=>:, **, T, H, A, B]] {
+          f.f.visit(new f.f.OptVisitor[FreeCCC[:->:, **, T, H, A, B]] {
             // reduce curry(uncurry(f)) to f
             override def apply[P, Q](g: Uncurry[P, Q, Z])(implicit ev1: (P ** Q) === (A ** Y)) =
               Some(g.cast(ev1).f.castB[B])
           })
 
         override def apply[X, Y](f: Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) =
-          f.f.visit(new f.f.OptVisitor[FreeCCC[:=>:, **, T, H, A, B]] {
+          f.f.visit(new f.f.OptVisitor[FreeCCC[:->:, **, T, H, A, B]] {
             // reduce uncurry(curry(f)) to f
             override def apply[Q, R](g: Curry[X, Q, R])(implicit ev1: H[Q, R] === H[Y, B]) =
               Some(g.cast(ev1).f.castA[A])
           })
-      }))
+      })
     )
   }
 }
