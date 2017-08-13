@@ -4,7 +4,7 @@ import lambdacart.util.~~>
 import lambdacart.util.LeibnizOps
 import lambdacart.util.typealigned.{AJust, AList1, LeftAction}
 import scala.annotation.tailrec
-import scalaz.~>
+import scalaz.{~>, Leibniz}
 import scalaz.Leibniz.===
 import scalaz.std.anyVal._
 
@@ -140,10 +140,16 @@ object FreeCCC {
 
   case class Fst[:->:[_, _], **[_, _], T, H[_, _], A, B]() extends FreeCCC[:->:, **, T, H, A ** B, A] {
     def visit[R](v: Visitor[R]): R = v(this)
+
+    def deriveLeibniz[X, Y](implicit ev: (A ** B) === (X ** Y)): A === X =
+      Leibniz.force[Nothing, Any, A, X]
   }
 
   case class Snd[:->:[_, _], **[_, _], T, H[_, _], A, B]() extends FreeCCC[:->:, **, T, H, A ** B, B] {
     def visit[R](v: Visitor[R]): R = v(this)
+
+    def deriveLeibniz[X, Y](implicit ev: (A ** B) === (X ** Y)): B === Y =
+      Leibniz.force[Nothing, Any, B, Y]
   }
 
   case class Prod[:->:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:->:, **, T, H, A, B], g: FreeCCC[:->:, **, T, H, A, C]) extends FreeCCC[:->:, **, T, H, A, B ** C] {
@@ -336,6 +342,10 @@ object FreeCCC {
           override def apply(g: Id[Y])(implicit ev: Y === Z) = Some(f.castB(ev))
           // reduce `terminal . f` to `terminal`
           override def apply(g: Terminal[Y])(implicit ev: T === Z) = Some((Terminal(): Terminal[X]).castB[Z])
+          override def apply[V, W](g: Curry[Y, V, W])(implicit ev: H[V, W] === Z) = g.f.visit(new g.f.OptVisitor[X :=>: Z] {
+            // reduce `curry(snd) . f` to `curry(snd)`
+            override def apply[U](h: Snd[U, W])(implicit ev1: (U ** W) === (Y ** V)) = Some(curry(snd[:->:, **, T, H, X, W]).castB(h.deriveLeibniz(ev1).lift[H[?, W]]).castB(ev))
+          })
         }).orElse(                                   f.visit(new f.OptVisitor[X :=>: Z] {
           // flatten compositions
           override def apply(f: Sequence[X, Y]) = Some(Sequence(f.fs :+ g))

@@ -169,6 +169,11 @@ sealed abstract class AList1[F[_, _], A, B] {
   }
 
   def toList: AList[F, A, B] = AList(this)
+
+  override def toString: String = {
+    val sb = new StringBuilder("AList1(")
+    foldLeft1[λ[α => StringBuilder]](λ[F[A, ?] ~> λ[α => StringBuilder]](f => sb.append(f.toString)))(ν[RightAction[λ[α => StringBuilder], F]][α, β]((buf, f) => buf.append(", ").append(f.toString))).append(')').toString
+  }
 }
 
 final case class AJust[F[_, _], A, B](value: F[A, B]) extends AList1[F, A, B] {

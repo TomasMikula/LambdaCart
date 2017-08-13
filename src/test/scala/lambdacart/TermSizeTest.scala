@@ -66,19 +66,19 @@ class TermSizeTest extends FunSuite {
   }
 
   test("x => y => x") {
-    assert(φ[X, Y, X]((x, y) => x).size == 40) // was 4
+    assert(φ[X, Y, X]((x, y) => x).size == 8) // was 4 // should be 2 (curry(fst))
   }
 
   test("x => y => y") {
-    assert(φ[X, Y, Y]((x, y) => y).size == 4)
+    assert(φ[X, Y, Y]((x, y) => y).size == 2) // curry(snd)
   }
 
   test("x => y => z => x") {
-    assert(φ[X, Y, Z, X]((x, y, z) => x).size == 78) // was 45
+    assert(φ[X, Y, Z, X]((x, y, z) => x).size == 46) // was 45
   }
 
   test("x => y => z => z") {
-    assert(φ[X, Y, Z, Z]((x, y, z) => z).size == 7)
+    assert(φ[X, Y, Z, Z]((x, y, z) => z).size == 5)
   }
 
   test("flip") {
