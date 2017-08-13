@@ -43,6 +43,11 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] {
   def uncurry[X, Y](implicit ev: B === H[X, Y]): FreeCCC[:->:, **, T, H, A**X, Y] =
     FreeCCC.uncurry(this.castB(ev))
 
+  def asSequence: Sequence[:->:, **, T, H, A, B] =
+    visit(new OptVisitor[Sequence[:->:, **, T, H, A, B]] {
+      override def apply(f: Sequence[A, B]) = Some(f)
+    }).getOrElse(Sequence(AList1(this)))
+
   final def foldMap[->[_, _]](φ: :->: ~~> ->)(implicit ccc: CCC.Aux[->, **, T, H]): A -> B =
     visit[A -> B](new Visitor[A -> B] {
       def apply      (f:     Lift[A, B]   ) = φ[A, B](f.f)
@@ -342,10 +347,15 @@ object FreeCCC {
           override def apply(g: Id[Y])(implicit ev: Y === Z) = Some(f.castB(ev))
           // reduce `terminal . f` to `terminal`
           override def apply(g: Terminal[Y])(implicit ev: T === Z) = Some((Terminal(): Terminal[X]).castB[Z])
-          override def apply[V, W](g: Curry[Y, V, W])(implicit ev: H[V, W] === Z) = g.f.visit(new g.f.OptVisitor[X :=>: Z] {
-            // reduce `curry(snd) . f` to `curry(snd)`
-            override def apply[U](h: Snd[U, W])(implicit ev1: (U ** W) === (Y ** V)) = Some(curry(snd[:->:, **, T, H, X, W]).castB(h.deriveLeibniz(ev1).lift[H[?, W]]).castB(ev))
-          })
+          override def apply[V, W](g: Curry[Y, V, W])(implicit ev: H[V, W] === Z) = {
+            val g0 = g.f.asSequence.fs
+            val (h, hs) = (g0.head, g0.tail)
+            h.visit(new h.OptVisitor[X :=>: Z] {
+              // reduce `f >>> curry(snd >>> gs)` to `curry(snd >>> gs)`
+              override def apply[U](h: Snd[U, g0.A1])(implicit ev1: (U ** g0.A1) === (Y ** V)) =
+                Some(curry(Sequence(snd[:->:, **, T, H, X, g0.A1] :: hs)).castB(h.deriveLeibniz(ev1).lift[H[?, W]]).castB(ev))
+            })
+          }
         }).orElse(                                   f.visit(new f.OptVisitor[X :=>: Z] {
           // flatten compositions
           override def apply(f: Sequence[X, Y]) = Some(Sequence(f.fs :+ g))
