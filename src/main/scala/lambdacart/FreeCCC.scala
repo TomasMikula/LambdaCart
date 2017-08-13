@@ -2,7 +2,7 @@ package lambdacart
 
 import lambdacart.util.~~>
 import lambdacart.util.LeibnizOps
-import lambdacart.util.typealigned.{AJust, AList, AList1, LeftAction}
+import lambdacart.util.typealigned.{AJust, AList, AList1, ANone, ASome, LeftAction}
 import scala.annotation.tailrec
 import scalaz.{~>, Leibniz}
 import scalaz.Leibniz.===
@@ -47,6 +47,10 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] {
     visit(new OptVisitor[Sequence[:->:, **, T, H, A, B]] {
       override def apply(f: Sequence[A, B]) = Some(f)
     }).getOrElse(Sequence(AList1(this)))
+
+  def termEqual[C](that: A :=>: C): Option[B === C] =
+    if(this == that) Some(Leibniz.force[Nothing, Any, B, C])
+    else             None
 
   final def foldMap[->[_, _]](φ: :->: ~~> ->)(implicit ccc: CCC.Aux[->, **, T, H]): A -> B =
     visit[A -> B](new Visitor[A -> B] {
@@ -311,6 +315,19 @@ object FreeCCC {
   def andThen[:->:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:->:, **, T, H, A, B], g: FreeCCC[:->:, **, T, H, B, C]): FreeCCC[:->:, **, T, H, A, C] =
     compose(g, f)
 
+  /** Like [[#andThen]], but not eagerly optimizing. */
+  private[FreeCCC] def sequence[:->:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:->:, **, T, H, A, B], g: FreeCCC[:->:, **, T, H, B, C]): FreeCCC[:->:, **, T, H, A, C] =
+    Sequence(f :: AList1(g))
+
+  private[FreeCCC] def sequence[:->:[_, _], **[_, _], T, H[_, _], A, B](fs: AList[FreeCCC[:->:, **, T, H, ?, ?], A, B]): FreeCCC[:->:, **, T, H, A, B] =
+    fs.uncons match {
+      case ASome(list) => list match {
+        case AJust(f) => f
+        case _        => Sequence(list)
+      }
+      case ANone(ev)   => id[:->:, **, T, H, A].castB(ev)
+    }
+
   def flip[:->:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:->:, **, T, H, (A**B), C]): FreeCCC[:->:, **, T, H, (B**A), C] =
     compose(f, prod(snd[:->:, **, T, H, B, A], fst[:->:, **, T, H, B, A]))
 
@@ -338,47 +355,87 @@ object FreeCCC {
     type Rewriter = FreeCCC.Rewriter[:->:, **, T, H]
     List(
       ν[Rewriter].visitor[A, B](new BinTransformer[:->:, **, T, H, A, B] {
-        override def apply      (f:     Lift[A, B]   )                              = None
+        override def apply   (f:     Lift[A, B])                              = None
+        override def apply   (f:       Id[A]   )(implicit ev:        A === B) = None
+        override def apply[X](f:      Fst[B, X])(implicit ev: (B ** X) === A) = None
+        override def apply[X](f:      Snd[X, B])(implicit ev: (X ** B) === A) = None
+        override def apply   (f: Terminal[A]   )(implicit ev:        T === B) = None
 
         override def apply[X, Y, Z](f: X :=>: Y, g: Y :=>: Z) = g.visit(new g.OptVisitor[X :=>: Z] {
+
           // flatten compositions
           override def apply(g: Sequence[Y, Z]) = Some(Sequence(f :: g.fs))
+
           // reduce `id . f` to `f`
           override def apply(g: Id[Y])(implicit ev: Y === Z) = Some(f.castB(ev))
+
           // reduce `terminal . f` to `terminal`
           override def apply(g: Terminal[Y])(implicit ev: T === Z) = Some((Terminal(): Terminal[X]).castB[Z])
-          override def apply[V, W](g: Curry[Y, V, W])(implicit ev: H[V, W] === Z) = {
-            val g0 = g.f.asSequence.fs
-            val (h, hs) = (g0.head, g0.tail)
-            h.visit(new h.OptVisitor[X :=>: Z] {
-              // reduce `f >>> curry(snd >>> gs)` to `curry(snd >>> gs)`
-              override def apply[U](h: Snd[U, g0.A1])(implicit ev1: (U ** g0.A1) === (Y ** V)) =
-                Some(curry(Sequence(snd[:->:, **, T, H, X, g0.A1] :: hs)).castB(h.deriveLeibniz(ev1).lift[H[?, W]]).castB(ev))
-              // reduce `f >>> curry(fst >>> gs)` to `curry(fst >>> f >>> gs)`
-              override def apply[U](h: Fst[g0.A1, U])(implicit ev1: (g0.A1 ** U) === (Y ** V)) = {
-                Some(curry(Sequence(fst[:->:, **, T, H, X, V] :: f :: h.deriveLeibniz(ev1).subst[AList[:=>:, ?, W]](hs))).castB(ev))
-              }
-            })
-          }
+
+          // Rewrite `f >>> curry(g)` to `curry(parallel(f, id) >>> g)`
+          // Increases size, but pushes `curry` on the outside.
+          override def apply[V, W](g: Curry[Y, V, W])(implicit ev: H[V, W] === Z) =
+            Some(curry(sequence(parallel(f, id[:->:, **, T, H, V]), g.f)).castB[Z])
+
         }).orElse(                                   f.visit(new f.OptVisitor[X :=>: Z] {
           // flatten compositions
           override def apply(f: Sequence[X, Y]) = Some(Sequence(f.fs :+ g))
+
           // reduce `g . id` to `g`
           override def apply(f: Id[X])(implicit ev: X === Y) = Some(g.castA(ev.flip))
+
           override def apply[P, Q](p: Prod[X, P, Q])(implicit ev: (P ** Q) === Y) =
             g.visit(new g.OptVisitor[X :=>: Z] {
+
               // reduce `fst . prod(f, g)` to `f`
-              override def apply[U](fst: Fst[Z, U])(implicit ev1: (Z ** U) === Y) = Some(p.cast(ev1.flip.compose(ev)).f)
+              override def apply[U](fst: Fst[Z, U])(implicit ev1: (Z ** U) === Y) =
+                Some(p.cast(ev1.flip.compose(ev)).f)
+
               // reduce `snd . prod(f, g)` to `g`
-              override def apply[U](snd: Snd[U, Z])(implicit ev1: (U ** Z) === Y) = Some(p.cast(ev1.flip.compose(ev)).g)
+              override def apply[U](snd: Snd[U, Z])(implicit ev1: (U ** Z) === Y) =
+                Some(p.cast(ev1.flip.compose(ev)).g)
+
+              override def apply[R, S](rs: Prod[Y, R, S])(implicit ev1: (R ** S) === Z) = {
+                val rSeq = rs.f.asSequence.fs
+                val (rh, rt) = (rSeq.head, rSeq.tail)
+                val sSeq = rs.g.asSequence.fs
+                val (sh, st) = (sSeq.head, sSeq.tail)
+
+                rh.visit(new rh.OptVisitor[X :=>: Z] {
+                  // reduce `prod(f1, f2) >>> prod(fst >>> g1, snd >>> g2)` to `prod(f1 >>> g1, f2 >>> g2)`
+                  override def apply[U](rh: Fst[rSeq.A1, U])(implicit ev2: (rSeq.A1 ** U) === Y) =
+                    sh.visit(new sh.OptVisitor[X :=>: Z] {
+                      override def apply[V](sh: Snd[V, sSeq.A1])(implicit ev3: (V ** sSeq.A1) === Y) = {
+                        val ev4: rSeq.A1 === P = rh.deriveLeibniz(ev.flip.compose(ev2))
+                        val ev5: sSeq.A1 === Q = sh.deriveLeibniz(ev.flip.compose(ev3))
+                        Some(prod(Sequence(p.f.castB(ev4.flip) :: rt), Sequence(p.g.castB(ev5.flip) :: st)).castB[Z])
+                      }
+                    })
+                  // reduce `prod(f1, f2) >>> prod(snd >>> g1, fst >>> g2)` to `prod(f2 >>> g1, f1 >>> g2)`
+                  override def apply[U](rh: Snd[U, rSeq.A1])(implicit ev2: (U ** rSeq.A1) === Y) =
+                    sh.visit(new sh.OptVisitor[X :=>: Z] {
+                      override def apply[V](sh: Fst[sSeq.A1, V])(implicit ev3: (sSeq.A1 ** V) === Y) = {
+                        val ev4: rSeq.A1 === Q = rh.deriveLeibniz(ev.flip.compose(ev2))
+                        val ev5: sSeq.A1 === P = sh.deriveLeibniz(ev.flip.compose(ev3))
+                        Some(prod(Sequence(p.g.castB(ev4.flip) :: rt), Sequence(p.f.castB(ev5.flip) :: st)).castB[Z])
+                      }
+                    })
+                })
+              }
             })
         }))
 
-        override def apply      (f:       Id[A]      )(implicit ev:        A === B) = None
-        override def apply[X]   (f:      Fst[B, X]   )(implicit ev: (B ** X) === A) = None
-        override def apply[X]   (f:      Snd[X, B]   )(implicit ev: (X ** B) === A) = None
-        override def apply[X, Y](f:     Prod[A, X, Y])(implicit ev: (X ** Y) === B) = None
-        override def apply      (f: Terminal[A]      )(implicit ev:        T === B) = None
+        // reduce `prod(f >>> g, f >>> h)` to `f >>> prod(g, h)`
+        override def apply[X, Y](f: Prod[A, X, Y])(implicit ev: (X ** Y) === B) = {
+          val fs = f.f.asSequence.fs
+          val gs = f.g.asSequence.fs
+          val (fh, ft) = (fs.head, fs.tail)
+          val (gh, gt) = (gs.head, gs.tail)
+          (fh termEqual gh) flatMap { (ev1: fs.A1 === gs.A1) => fh match {
+            case Id() => None // prevent rewriting `prod(id, id)` to `id >>> prod(id, id)`
+            case _    => Some(sequence(fh, Prod(sequence(ft), sequence(gt).castA(ev1.flip))).castB[B])
+          }}
+        }
 
         override def apply[Y, Z](f: Curry[A, Y, Z])(implicit ev: H[Y, Z] === B) =
           f.f.visit(new f.f.OptVisitor[FreeCCC[:->:, **, T, H, A, B]] {
