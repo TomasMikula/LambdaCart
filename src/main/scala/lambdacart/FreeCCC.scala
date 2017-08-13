@@ -2,7 +2,7 @@ package lambdacart
 
 import lambdacart.util.~~>
 import lambdacart.util.LeibnizOps
-import lambdacart.util.typealigned.{AJust, AList1, LeftAction}
+import lambdacart.util.typealigned.{AJust, AList, AList1, LeftAction}
 import scala.annotation.tailrec
 import scalaz.{~>, Leibniz}
 import scalaz.Leibniz.===
@@ -354,6 +354,10 @@ object FreeCCC {
               // reduce `f >>> curry(snd >>> gs)` to `curry(snd >>> gs)`
               override def apply[U](h: Snd[U, g0.A1])(implicit ev1: (U ** g0.A1) === (Y ** V)) =
                 Some(curry(Sequence(snd[:->:, **, T, H, X, g0.A1] :: hs)).castB(h.deriveLeibniz(ev1).lift[H[?, W]]).castB(ev))
+              // reduce `f >>> curry(fst >>> gs)` to `curry(fst >>> f >>> gs)`
+              override def apply[U](h: Fst[g0.A1, U])(implicit ev1: (g0.A1 ** U) === (Y ** V)) = {
+                Some(curry(Sequence(fst[:->:, **, T, H, X, V] :: f :: h.deriveLeibniz(ev1).subst[AList[:=>:, ?, W]](hs))).castB(ev))
+              }
             })
           }
         }).orElse(                                   f.visit(new f.OptVisitor[X :=>: Z] {
