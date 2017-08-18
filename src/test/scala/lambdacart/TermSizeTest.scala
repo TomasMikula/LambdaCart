@@ -16,15 +16,15 @@ class TermSizeTest extends FunSuite {
   }
 
   test("x => x ** x") {
-    assert(φ[X, X**X](x => x ** x).size == 9) // should be 3
+    assert(φ[X, X**X](x => x ** x).size == 7) // should be 3
   }
 
   test("x => y => x ** y") {
-    assert(φ[X, Y, X**Y]((x, y) => x ** y).size == 4) // should be 2 (curry(id))
+    assert(φ[X, Y, X**Y]((x, y) => x ** y).size == 2) // curry(id)
   }
 
   test("x => y => y ** x") {
-    assert(φ[X, Y, Y**X]((x, y) => y ** x).size == 15) // should be 4 (curry(prod(snd, fst)))
+    assert(φ[X, Y, Y**X]((x, y) => y ** x).size == 12) // should be 4 (curry(prod(snd, fst)))
   }
 
   test("xy => xy._1") {
@@ -95,14 +95,14 @@ class TermSizeTest extends FunSuite {
   }
 
   test("forLoop") {
-    assert(sizeOf(forLoop[X]) == 469)
+    assert(sizeOf(forLoop[X]) == 453)
   }
 
   test("plus") {
-    assert(sizeOf(plus) == 593)
+    assert(sizeOf(plus) == 577)
   }
 
   test("times") {
-    assert(sizeOf(times) == 1131)
+    assert(sizeOf(times) == 1099)
   }
 }

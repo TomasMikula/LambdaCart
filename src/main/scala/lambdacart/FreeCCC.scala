@@ -425,27 +425,35 @@ object FreeCCC {
             })
         }))
 
-        // reduce `prod(f >>> g, f >>> h)` to `f >>> prod(g, h)`
-        override def apply[X, Y](f: Prod[A, X, Y])(implicit ev: (X ** Y) === B) = {
-          val fs = f.f.asSequence.fs
-          val gs = f.g.asSequence.fs
-          val (fh, ft) = (fs.head, fs.tail)
-          val (gh, gt) = (gs.head, gs.tail)
-          (fh termEqual gh) flatMap { (ev1: fs.A1 === gs.A1) => fh match {
-            case Id() => None // prevent rewriting `prod(id, id)` to `id >>> prod(id, id)`
-            case _    => Some(sequence(fh, Prod(sequence(ft), sequence(gt).castA(ev1.flip))).castB[B])
-          }}
-        }
+        override def apply[X, Y](f: Prod[A, X, Y])(implicit ev: (X ** Y) === B) =
+          // reduce `prod(fst, snd)` to identity
+          f.f.visit(new f.f.OptVisitor[A :=>: B] {
+            override def apply[P](fst: Fst[X, P])(implicit ev1: (X ** P) === A) =
+              f.g.visit(new f.g.OptVisitor[A :=>: B] {
+                override def apply[Q](snd: Snd[Q, Y])(implicit ev2: (Q ** Y) === A) =
+                  Some(id[:->:, **, T, H, A].castB(ev compose snd.deriveLeibniz(ev1.flip.compose(ev2)).flip.lift[X ** ?].subst[? === A](ev1).flip))
+              })
+          }).orElse({
+            // reduce `prod(f >>> g, f >>> h)` to `f >>> prod(g, h)`
+            val fs = f.f.asSequence.fs
+            val gs = f.g.asSequence.fs
+            val (fh, ft) = (fs.head, fs.tail)
+            val (gh, gt) = (gs.head, gs.tail)
+            (fh termEqual gh) flatMap { (ev1: fs.A1 === gs.A1) => fh match {
+              case Id() => None // prevent rewriting `prod(id, id)` to `id >>> prod(id, id)`
+              case _    => Some(sequence(fh, Prod(sequence(ft), sequence(gt).castA(ev1.flip))).castB[B])
+            }}
+          })
 
         override def apply[Y, Z](f: Curry[A, Y, Z])(implicit ev: H[Y, Z] === B) =
-          f.f.visit(new f.f.OptVisitor[FreeCCC[:->:, **, T, H, A, B]] {
+          f.f.visit(new f.f.OptVisitor[A :=>: B] {
             // reduce curry(uncurry(f)) to f
             override def apply[P, Q](g: Uncurry[P, Q, Z])(implicit ev1: (P ** Q) === (A ** Y)) =
               Some(g.cast(ev1).f.castB[B])
           })
 
         override def apply[X, Y](f: Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) =
-          f.f.visit(new f.f.OptVisitor[FreeCCC[:->:, **, T, H, A, B]] {
+          f.f.visit(new f.f.OptVisitor[A :=>: B] {
             // reduce uncurry(curry(f)) to f
             override def apply[Q, R](g: Curry[X, Q, R])(implicit ev1: H[Q, R] === H[Y, B]) =
               Some(g.cast(ev1).f.castA[A])
