@@ -16,7 +16,7 @@ class TermSizeTest extends FunSuite {
   }
 
   test("x => x ** x") {
-    assert(φ[X, X**X](x => x ** x).size == 7) // should be 3
+    assert(φ[X, X**X](x => x ** x).size == 3) // prod(id, id)
   }
 
   test("x => y => x ** y") {
@@ -24,7 +24,7 @@ class TermSizeTest extends FunSuite {
   }
 
   test("x => y => y ** x") {
-    assert(φ[X, Y, Y**X]((x, y) => y ** x).size == 12) // should be 4 (curry(prod(snd, fst)))
+    assert(φ[X, Y, Y**X]((x, y) => y ** x).size == 4) // curry(prod(snd, fst))
   }
 
   test("xy => xy._1") {
@@ -50,19 +50,19 @@ class TermSizeTest extends FunSuite {
     φ(abc => (abc._1 ** abc._2._1) ** abc._2._2)
 
   test("assocR") {
-    assert(assocR[X, Y, Z].size == 29) // should be no more than 9
+    assert(assocR[X, Y, Z].size == 19) // should be no more than 9
   }
 
   test("assocL") {
-    assert(assocL[X, Y, Z].size == 18) // should be no more than 9
+    assert(assocL[X, Y, Z].size == 9) // should be no more than 9
   }
 
   test("assocL . assocR") { // should reduce to identity
-    assert(φ((xyz: $[(X**Y)**Z]) => assocL(assocR(xyz))).size == 46) // should be 1
+    assert(φ((xyz: $[(X**Y)**Z]) => assocL(assocR(xyz))).size == 28) // should be 1
   }
 
-  test("assocR . assocR") { // should reduce to identity
-    assert(φ((xyz: $[X**(Y**Z)]) => assocR(assocL(xyz))).size == 46) // should be 1
+  test("assocR . assocL") { // should reduce to identity
+    assert(φ((xyz: $[X**(Y**Z)]) => assocR(assocL(xyz))).size == 28) // should be 1
   }
 
   test("x => y => x") {
@@ -82,12 +82,12 @@ class TermSizeTest extends FunSuite {
   }
 
   test("flip") {
-    assert(φ[X**Y, Y**X](xy => xy._2 ** xy._1).size == 13) // should be 3
+    assert(φ[X**Y, Y**X](xy => xy._2 ** xy._1).size == 3) // prod(snd, fst)
   }
 
   test("flip . flip") { // should reduce to identity
     def flip[A, B]: φ[A**B, B**A] = φ(ab => ab._2 ** ab._1)
-    assert(φ[X**Y, X**Y](xy => flip(flip(xy))).size == 25) // should be 1 (identity)
+    assert(φ[X**Y, X**Y](xy => flip(flip(xy))).size == 1) // identity
   }
 
   test("x => inc(x)") {

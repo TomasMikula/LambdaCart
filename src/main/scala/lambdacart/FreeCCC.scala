@@ -37,6 +37,9 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] {
   def compose[Z](that: FreeCCC[:->:, **, T, H, Z, A]): FreeCCC[:->:, **, T, H, Z, B] =
     FreeCCC.compose(this, that)
 
+  def andThen[C](that: FreeCCC[:->:, **, T, H, B, C]): FreeCCC[:->:, **, T, H, A, C] =
+    that compose this
+
   def curry[X, Y](implicit ev: A === (X ** Y)): FreeCCC[:->:, **, T, H, X, H[Y, B]] =
     FreeCCC.curry(this.castA(ev))
 
@@ -422,6 +425,15 @@ object FreeCCC {
                     })
                 })
               }
+
+              // rewrite `prod(f, g) >>> eval` to `prod(id, g) >>> uncurry(f)`
+              override def apply[R, S](g: Uncurry[R, S, Z])(implicit ev1: (R ** S) === Y) =
+                g.f.visit(new g.f.OptVisitor[X :=>: Z] {
+                  override def apply(gf: Id[R])(implicit ev2: R === H[S, Z]) = {
+                    val p1: Prod[X, R, S] = p.cast(ev1.flip compose ev)
+                    Some(prod(id[:->:, **, T, H, X], p1.g) andThen uncurry(p1.f.castB(ev2)))
+                  }
+                })
             })
         }))
 
