@@ -40,7 +40,7 @@ class TermSizeTest extends FunSuite {
   }
 
   test("x => y => z => (x ** y) ** z") {
-    assert(φ[X, Y, Z, (X**Y)**Z]((x, y, z) => (x ** y) ** z).size == 42)
+    assert(φ[X, Y, Z, (X**Y)**Z]((x, y, z) => (x ** y) ** z).size == 21)
   }
 
   private def assocR[A, B, C]: φ[(A**B)**C, A**(B**C)] =
@@ -95,14 +95,14 @@ class TermSizeTest extends FunSuite {
   }
 
   test("forLoop") {
-    assert(sizeOf(forLoop[X]) == 428)
+    assert(sizeOf(forLoop[X]) == 453) // was 428
   }
 
   test("plus") {
-    assert(sizeOf(plus) == 552)
+    assert(sizeOf(plus) == 577) // was 552
   }
 
   test("times") {
-    assert(sizeOf(times) == 1049)
+    assert(sizeOf(times) == 1099) // was 1049
   }
 }

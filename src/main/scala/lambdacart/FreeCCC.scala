@@ -471,8 +471,9 @@ object FreeCCC {
             //
             gh.visit(new gh.OptVisitor[A :=>: B] {
               override def apply[P, Q](gh: Prod[A, P, Q])(implicit ev1: (P ** Q) === gs.A1) = {
-                val g1s = gh.f.asSequence.fs
-                val g2s = gh.g.asSequence.fs
+                val (g1, g2) = (gh.f, gh.g)
+                val g1s = g1.asSequence.fs
+                val g2s = g2.asSequence.fs
                 val (g1h, g1t) = (g1s.head, g1s.tail)
                 val (g2h, g2t) = (g2s.head, g2s.tail)
 
@@ -480,10 +481,59 @@ object FreeCCC {
                 // to      `prod(fh >>> prod(ft, g1t), g2) >>> prod(fst >>> fst, prod(fst >>> snd, snd) >>> gt)`,
                 // factoring out `fh`.
                 (g1h termEqual fh) flatMap { (ev2: g1s.A1 === fs.A1) =>
-                  // prevent expanding                        `prod(fst >>> fst, prod(fst >>> snd, snd) >>> gt)`
-                  // to `prod(fst >>> prod(fst, snd), snd) >>> prod(fst >>> fst, prod(fst >>> snd, snd) >>> gt)`
-                  if(fh == Fst() && sequence(ft) == Fst() && sequence(g1t) == Snd() && gh.g == Snd()) None
-                  else Some(sequence(Prod(sequence(fh, Prod(sequence(ft), sequence(g1t).castA(ev2))), gh.g), Prod(Fst[X ** P, Q]() >>> Fst[X, P](), Prod(Fst[X ** P, Q]() >>> Snd[X, P](), Snd[X ** P, Q]()).castB(ev1) >>> sequence(gt)).castB(ev)))
+                  if(fh == Fst() && sequence(ft) == Fst() && sequence(g1t) == Snd() && g2 == Snd())
+                    // prevent expanding                        `prod(fst >>> fst, prod(fst >>> snd, snd) >>> gt)`
+                    // to `prod(fst >>> prod(fst, snd), snd) >>> prod(fst >>> fst, prod(fst >>> snd, snd) >>> gt)`
+                    None
+                  else
+                    Some(sequence(Prod(sequence(fh, Prod(sequence(ft), sequence(g1t).castA(ev2))), g2), Prod(Fst[X ** P, Q]() >>> Fst[X, P](), Prod(Fst[X ** P, Q]() >>> Snd[X, P](), Snd[X ** P, Q]()).castB(ev1) >>> sequence(gt)).castB(ev)))
+                } orElse {
+                // Rewrite `prod(fh >>> ft, prod(g1, fh >>> g2t) >>> gt)`
+                // to      `prod(fh >>> prod(ft, g2t), g1) >>> prod(fst >>> fst, prod(snd, fst >>> snd) >>> gt)`,
+                // factoring out `fh`.
+                (g2h termEqual fh) flatMap { (ev2: g2s.A1 === fs.A1) =>
+                  if(fh == Fst() && sequence(ft) == Fst() && g1 == Snd() && sequence(g2t) == Snd())
+                    // prevent expanding                        `prod(fst >>> fst, prod(snd, fst >>> snd) >>> gt)`
+                    // to `prod(fst >>> prod(fst, snd), snd) >>> prod(fst >>> fst, prod(snd, fst >>> snd) >>> gt)`
+                    None
+                  else
+                    Some(sequence(Prod(sequence(fh, Prod(sequence(ft), sequence(g2t).castA(ev2))), g1), Prod(Fst[X ** Q, P]() >>> Fst[X, Q](), Prod(Snd[X ** Q, P](), Fst[X ** Q, P]() >>> Snd[X, Q]()).castB(ev1) >>> sequence(gt)).castB(ev)))
+                }
+                }
+              }
+            }) orElse
+            //
+            fh.visit(new fh.OptVisitor[A :=>: B] {
+              override def apply[P, Q](fh: Prod[A, P, Q])(implicit ev1: (P ** Q) === fs.A1) = {
+                val (f1, f2) = (fh.f, fh.g)
+                val f1s = f1.asSequence.fs
+                val f2s = f2.asSequence.fs
+                val (f1h, f1t) = (f1s.head, f1s.tail)
+                val (f2h, f2t) = (f2s.head, f2s.tail)
+
+                // Rewrite `prod(prod(gh >>> f1t, f2) >>> ft, gh >>> gt)`
+                // to      `prod(gh >>> prod(f1t, gt), f2) >>> prod(prod(fst >>> fst, snd) >>> ft, fst >>> snd)`,
+                // factoring out `gh`.
+                (f1h termEqual gh) flatMap { (ev2: f1s.A1 === gs.A1) =>
+                  if(gh == Fst() || sequence(f1t) == Fst() || f2 == Snd() || sequence(gt) == Snd())
+                    // prevent expanding                        `prod(prod(fst >>> fst, snd) >>> ft, fst >>> snd)`
+                    // to `prod(fst >>> prod(fst, snd), snd) >>> prod(prod(fst >>> fst, snd) >>> ft, fst >>> snd)`
+                    None
+                  else
+                    Some(sequence(Prod(sequence(gh, Prod(sequence(f1t).castA(ev2), sequence(gt))), f2), Prod(Prod(Fst[P ** Y, Q]() >>> Fst[P, Y](), Snd[P ** Y, Q]()).castB(ev1) >>> sequence(ft), Fst[P ** Y, Q]() >>> Snd[P, Y]()).castB(ev)))
+                } orElse {
+
+                // Rewrite `prod(prod(f1, gh >>> f2t) >>> ft, gh >>> gt)`
+                // to      `prod(f1, gh >>> prod(f2t, gt)) >>> prod(prod(fst, snd >>> fst) >>> ft, snd >>> snd)`,
+                // factoring out `gh`.
+                (f2h termEqual gh) flatMap { (ev2: f2s.A1 === gs.A1) =>
+                  if(f1 == Fst() && gh == Snd() && sequence(f2t) == Fst() && sequence(gt) == Snd())
+                    // prevent expanding                        `prod(prod(fst, snd >>> fst) >>> ft, snd >>> snd)`
+                    // to `prod(fst, snd >>> prod(fst, snd)) >>> prod(prod(fst, snd >>> fst) >>> ft, snd >>> snd)`
+                    None
+                  else
+                    Some(sequence(Prod(f1, sequence(gh, Prod(sequence(f2t).castA(ev2), sequence(gt)))), Prod(Prod(Fst[P, Q ** Y](), Snd[P, Q ** Y]() >>> Fst[Q, Y]()).castB(ev1) >>> sequence(ft), Snd[P, Q ** Y]() >>> Snd[Q, Y]()).castB(ev)))
+                }
                 }
               }
             })
