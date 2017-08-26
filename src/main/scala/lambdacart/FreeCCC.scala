@@ -40,6 +40,9 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] {
   def andThen[C](that: FreeCCC[:->:, **, T, H, B, C]): FreeCCC[:->:, **, T, H, A, C] =
     that compose this
 
+  def >>>[C](that: FreeCCC[:->:, **, T, H, B, C]): FreeCCC[:->:, **, T, H, A, C] =
+    this andThen that
+
   def curry[X, Y](implicit ev: A === (X ** Y)): FreeCCC[:->:, **, T, H, X, H[Y, B]] =
     FreeCCC.curry(this.castA(ev))
 
@@ -211,6 +214,15 @@ object FreeCCC {
     type Snd[X, Y]        = FreeCCC.Snd     [:->:, **, T, H, X, Y]
     type Curry[X, Y, Z]   = FreeCCC.Curry   [:->:, **, T, H, X, Y, Z]
     type Uncurry[X, Y, Z] = FreeCCC.Uncurry [:->:, **, T, H, X, Y, Z]
+
+    def Lift[X, Y](f: X :->: Y)                 : Lift[X, Y]       = FreeCCC.Lift(f)
+    def Id[X]()                                 : Id[X]            = FreeCCC.Id()
+    def Prod[X, Y, Z](f: X :=>: Y, g: X :=>: Z) : Prod[X, Y, Z]    = FreeCCC.Prod(f, g)
+    def Terminal[X]()                           : Terminal[X]      = FreeCCC.Terminal()
+    def Fst[X, Y]()                             : Fst[X, Y]        = FreeCCC.Fst()
+    def Snd[X, Y]()                             : Snd[X, Y]        = FreeCCC.Snd()
+    def Curry[X, Y, Z](f: (X ** Y) :=>: Z)      : Curry[X, Y, Z]   = FreeCCC.Curry(f)
+    def Uncurry[X, Y, Z](f: X :=>: H[Y, Z])     : Uncurry[X, Y, Z] = FreeCCC.Uncurry(f)
 
     def apply      (f:     Lift[A, B]   )                              : R
     def apply      (f: Sequence[A, B]   )                              : R
@@ -446,15 +458,35 @@ object FreeCCC {
                   Some(id[:->:, **, T, H, A].castB(ev compose snd.deriveLeibniz(ev1.flip.compose(ev2)).flip.lift[X ** ?].subst[? === A](ev1).flip))
               })
           }).orElse({
-            // reduce `prod(f >>> g, f >>> h)` to `f >>> prod(g, h)`
             val fs = f.f.asSequence.fs
             val gs = f.g.asSequence.fs
             val (fh, ft) = (fs.head, fs.tail)
             val (gh, gt) = (gs.head, gs.tail)
+
+            // reduce `prod(fh >>> ft, fh >>> gt)` to `fh >>> prod(ft, gt)`
             (fh termEqual gh) flatMap { (ev1: fs.A1 === gs.A1) => fh match {
-              case Id() => None // prevent rewriting `prod(id, id)` to `id >>> prod(id, id)`
+              case Id() => None // prevent expanding `prod(id, id)` to `id >>> prod(id, id)`
               case _    => Some(sequence(fh, Prod(sequence(ft), sequence(gt).castA(ev1.flip))).castB[B])
-            }}
+            }} orElse
+            //
+            gh.visit(new gh.OptVisitor[A :=>: B] {
+              override def apply[P, Q](gh: Prod[A, P, Q])(implicit ev1: (P ** Q) === gs.A1) = {
+                val g1s = gh.f.asSequence.fs
+                val g2s = gh.g.asSequence.fs
+                val (g1h, g1t) = (g1s.head, g1s.tail)
+                val (g2h, g2t) = (g2s.head, g2s.tail)
+
+                // Rewrite `prod(fh >>> ft, prod(fh >>> g1t, g2) >>> gt)`
+                // to      `prod(fh >>> prod(ft, g1t), g2) >>> prod(fst >>> fst, prod(fst >>> snd, snd) >>> gt)`,
+                // factoring out `fh`.
+                (g1h termEqual fh) flatMap { (ev2: g1s.A1 === fs.A1) =>
+                  // prevent expanding                        `prod(fst >>> fst, prod(fst >>> snd, snd) >>> gt)`
+                  // to `prod(fst >>> prod(fst, snd), snd) >>> prod(fst >>> fst, prod(fst >>> snd, snd) >>> gt)`
+                  if(fh == Fst() && sequence(ft) == Fst() && sequence(g1t) == Snd() && gh.g == Snd()) None
+                  else Some(sequence(Prod(sequence(fh, Prod(sequence(ft), sequence(g1t).castA(ev2))), gh.g), Prod(Fst[X ** P, Q]() >>> Fst[X, P](), Prod(Fst[X ** P, Q]() >>> Snd[X, P](), Snd[X ** P, Q]()).castB(ev1) >>> sequence(gt)).castB(ev)))
+                }
+              }
+            })
           })
 
         override def apply[Y, Z](f: Curry[A, Y, Z])(implicit ev: H[Y, Z] === B) =
