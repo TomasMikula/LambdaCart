@@ -54,6 +54,7 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] {
       override def apply(f: Sequence[A, B]) = Some(f)
     }).getOrElse(Sequence(AList1(this)))
 
+  // FIXME unsafe, should instead return Option[A :=>: (B with C)]
   def termEqual[C](that: A :=>: C): Option[B === C] =
     if(this == that) Some(Leibniz.force[Nothing, Any, B, C])
     else             None
@@ -137,6 +138,33 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] {
 
       def apply[X, Y](f: Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) =
         Uncurry(f.f.optimize(rules)).castA[A]
+    })
+
+  private[FreeCCC] def rmTags: FreeCCC[:->:, **, T, H, A, B] =
+    rebuild(~~>.identity[:=>:])
+
+  private[FreeCCC] def rebuild(φ: :=>: ~~> :=>:): A :=>: B =
+    φ.apply(transformChildren(ν[:=>: ~~> :=>:][α, β](_.rebuild(φ))))
+
+  private[FreeCCC] def transformChildren(φ: :=>: ~~> :=>:): A :=>: B =
+    visit(new Visitor[FreeCCC[:->:, **, T, H, A, B]] {
+      def apply   (f:     Lift[A, B])                              = f
+      def apply   (f:       Id[A]   )(implicit ev:        A === B) = f.castB[B]
+      def apply[X](f:      Fst[B, X])(implicit ev: (B ** X) === A) = f.castA[A]
+      def apply[X](f:      Snd[X, B])(implicit ev: (X ** B) === A) = f.castA[A]
+      def apply   (f: Terminal[A]   )(implicit ev:        T === B) = f.castB[B]
+
+      def apply(f: Sequence[A, B]) =
+        Sequence(f.fs.map(φ))
+
+      def apply[X, Y](f: Prod[A, X, Y])(implicit ev: (X ** Y) === B) =
+        Prod(φ.apply(f.f), φ.apply(f.g)).castB[B]
+
+      def apply[X, Y](f: Curry[A, X, Y])(implicit ev:  H[X, Y] === B) =
+        Curry(φ.apply(f.f)).castB[B]
+
+      def apply[X, Y](f: Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) =
+        Uncurry(φ.apply(f.f)).castA[A]
     })
 }
 
@@ -447,7 +475,17 @@ object FreeCCC {
                   }
                 })
             })
-        }))
+        })).orElse({
+          // rewrite `assocL >>> assocR` and `assocR >>> assocL` to `id`
+          val assocL = Prod(Prod(Fst[Any, Any**Any](), sequence(Snd[Any, Any**Any](), Fst[Any, Any]())), sequence(Snd[Any, Any**Any](), Snd[Any, Any]()))
+          val assocR = Prod(sequence(Fst[Any**Any, Any](), Fst[Any, Any]()), Prod(sequence(Fst[Any**Any, Any](), Snd[Any, Any]()), Snd[Any**Any, Any]()))
+
+          val (f1, g1) = (f.rmTags, g.rmTags)
+          if((f1.rmTags == assocL && g1.rmTags == assocR) || (f1.rmTags == assocR && g1.rmTags == assocL))
+            Some(Id().asInstanceOf[X :=>: Z]) // XXX should avoid asInstanceOf, but it's a pain
+          else
+            None
+        })
 
         override def apply[X, Y](f: Prod[A, X, Y])(implicit ev: (X ** Y) === B) =
           // reduce `prod(fst, snd)` to identity
