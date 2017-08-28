@@ -588,12 +588,12 @@ object FreeCCC {
               Some(g.cast(ev1).f.castB[B])
           })
 
+        // rewrite `uncurry(h)` to `prod(fst >>> h, snd) >>> eval`
         override def apply[X, Y](f: Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) =
-          f.f.visit(new f.f.OptVisitor[A :=>: B] {
-            // reduce uncurry(curry(f)) to f
-            override def apply[Q, R](g: Curry[X, Q, R])(implicit ev1: H[Q, R] === H[Y, B]) =
-              Some(g.cast(ev1).f.castA[A])
-          })
+          f.f match {
+            case Id() => None
+            case f0   => Some(sequence(Prod(sequence(Fst[X, Y](), f0), Snd[X, Y]()), Uncurry(Id[H[Y, B]]())).castA[A])
+          }
       })
     )
   }
