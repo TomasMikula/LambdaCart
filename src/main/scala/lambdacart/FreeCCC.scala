@@ -420,6 +420,45 @@ object FreeCCC {
           override def apply[V, W](g: Curry[Y, V, W])(implicit ev: H[V, W] === Z) =
             Some(curry(sequence(parallel(f, id[:->:, **, T, H, V]), g.f)).castB[Z])
 
+          override def apply[P, Q](g: Prod[Y, P, Q])(implicit ev: (P ** Q) === Z) = {
+            val g1s = g.f.asSequence.fs
+            val g2s = g.g.asSequence.fs
+            val (g1h, g1t) = (g1s.head, g1s.tail)
+            val (g2h, g2t) = (g2s.head, g2s.tail)
+
+            // rewrite `f >>> prod(curry(snd >>> h) >>> i, g2)`
+            // to      `prod(curry(snd >>> h) >>> i, f >>> g2)`
+            g1h.visit(new g1h.OptVisitor[X :=>: Z] {
+              override def apply[R, S](g1h: Curry[Y, R, S])(implicit ev1: H[R, S] === g1s.A1) = {
+                val g1hs = g1h.f.asSequence.fs
+                val (g1hh, g1ht) = (g1hs.head, g1hs.tail)
+
+                g1hh.visit(new g1hh.OptVisitor[X :=>: Z] {
+                  override def apply[U](g1hh: Snd[U, g1hs.A1])(implicit ev2: (U ** g1hs.A1) === (Y ** R)) = {
+                    val ev3: g1hs.A1 === R = g1hh.deriveLeibniz(ev2)
+                    Some(Prod(sequence(Curry(sequence(Snd[X, R](), sequence(g1ht).castA(ev3))), sequence(g1t).castA(ev1.flip)), f >>> g.g).castB[Z])
+                  }
+                })
+              }
+            }) orElse {
+            // rewrite `f >>> prod(g1, curry(snd >>> h) >>> i)`
+            // to      `prod(f >>> g1, curry(snd >>> h) >>> i)`
+            g2h.visit(new g2h.OptVisitor[X :=>: Z] {
+              override def apply[R, S](g2h: Curry[Y, R, S])(implicit ev1: H[R, S] === g2s.A1) = {
+                val g2hs = g2h.f.asSequence.fs
+                val (g2hh, g2ht) = (g2hs.head, g2hs.tail)
+
+                g2hh.visit(new g2hh.OptVisitor[X :=>: Z] {
+                  override def apply[U](g2hh: Snd[U, g2hs.A1])(implicit ev2: (U ** g2hs.A1) === (Y ** R)) = {
+                    val ev3: g2hs.A1 === R = g2hh.deriveLeibniz(ev2)
+                    Some(Prod(f >>> g.f, sequence(Curry(sequence(Snd[X, R](), sequence(g2ht).castA(ev3))), sequence(g2t).castA(ev1.flip))).castB[Z])
+                  }
+                })
+              }
+            })
+            }
+          }
+
         }).orElse(                                   f.visit(new f.OptVisitor[X :=>: Z] {
           // flatten compositions
           override def apply(f: Sequence[X, Y]) = Some(Sequence(f.fs :+ g))
