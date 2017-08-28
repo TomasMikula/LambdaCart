@@ -466,14 +466,18 @@ object FreeCCC {
                 })
               }
 
-              // rewrite `prod(f, g) >>> eval` to `prod(id, g) >>> uncurry(f)`
-              override def apply[R, S](g: Uncurry[R, S, Z])(implicit ev1: (R ** S) === Y) =
-                g.f.visit(new g.f.OptVisitor[X :=>: Z] {
-                  override def apply(gf: Id[R])(implicit ev2: R === H[S, Z]) = {
-                    val p1: Prod[X, R, S] = p.cast(ev1.flip compose ev)
-                    Some(prod(id[:->:, **, T, H, X], p1.g) andThen uncurry(p1.f.castB(ev2)))
+              // rewrite `prod(curry(f), g) >>> uncurry(id)` to `prod(id, g) >>> f`
+              override def apply[R, S](g: Uncurry[R, S, Z])(implicit ev1: (R ** S) === Y) = {
+                val g0: Uncurry[P, Q, Z] = g.cast(ev.flip compose ev1)
+                g0.f.visit(new g0.f.OptVisitor[X :=>: Z] {
+                  override def apply(gf: Id[P])(implicit ev2: P === H[Q, Z]) = {
+                    p.f.visit(new p.f.OptVisitor[X :=>: Z] {
+                      override def apply[V, W](p1: Curry[X, V, W])(implicit ev3: H[V, W] === P) =
+                        Some(sequence(Prod(Id[X](), p.g), p1.cast(ev2 compose ev3).f))
+                    })
                   }
                 })
+              }
             })
         })).orElse({
           // rewrite `assocL >>> assocR` and `assocR >>> assocL` to `id`
