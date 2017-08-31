@@ -469,11 +469,11 @@ object FreeCCC {
           override def apply[P, Q](p: Prod[X, P, Q])(implicit ev: (P ** Q) === Y) =
             g.visit(new g.OptVisitor[X :=>: Z] {
 
-              // reduce `fst . prod(f, g)` to `f`
+              // reduce `prod(f, g) >>> fst` to `f`
               override def apply[U](fst: Fst[Z, U])(implicit ev1: (Z ** U) === Y) =
                 Some(p.cast(ev1.flip.compose(ev)).f)
 
-              // reduce `snd . prod(f, g)` to `g`
+              // reduce `prod(f, g) >>> snd` to `g`
               override def apply[U](snd: Snd[U, Z])(implicit ev1: (U ** Z) === Y) =
                 Some(p.cast(ev1.flip.compose(ev)).g)
 
@@ -549,6 +549,22 @@ object FreeCCC {
               case Id() => None // prevent expanding `prod(id, id)` to `id >>> prod(id, id)`
               case _    => Some(sequence(fh, Prod(sequence(ft), sequence(gt).castA(ev1.flip))).castB[B])
             }} orElse
+            //
+            // rewrite `prod(terminal >>> ft, g)` to `g >>> prod(terminal >>> ft, id)`
+            fh.visit(new fh.OptVisitor[A :=>: B] {
+              override def apply(fh: Terminal[A])(implicit ev1: T === fs.A1) = f.g match {
+                case Id() => None // prevent infinite expansion of `prod(terminal >>> ft, id)`
+                case g    => Some(sequence(g, Prod(Sequence(Terminal[Y]().castB(ev1) :: ft), Id[Y]())).castB[B])
+              }
+            }) orElse
+            //
+            // rewrite `prod(f, terminal >>> gt)` to `f >>> prod(id, terminal >>> gt)`
+            gh.visit(new gh.OptVisitor[A :=>: B] {
+              override def apply(gh: Terminal[A])(implicit ev1: T === gs.A1) = f.f match {
+                case Id() => None // prevent infinite expansion of `prod(id, terminal >>> gt)`
+                case f    => Some(sequence(f, Prod(Id[X](), Sequence(Terminal[X]().castB(ev1) :: gt))).castB[B])
+              }
+            }) orElse
             //
             gh.visit(new gh.OptVisitor[A :=>: B] {
               override def apply[P, Q](gh: Prod[A, P, Q])(implicit ev1: (P ** Q) === gs.A1) = {
