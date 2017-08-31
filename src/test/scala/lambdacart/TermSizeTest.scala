@@ -98,19 +98,26 @@ class TermSizeTest extends FunSuite {
     assert(φ[Nat, Nat](x => inc(inc(x))).size == 3) // inc >>> inc
   }
 
+  test("plus, relative to forLoop") {
+    val plus: φ[Nat, Nat ->: Nat] =
+      φ[Nat, Nat, Nat]((a, b) => forLoop(a)(b)(inc))
+
+    assert(plus.size == 17)
+  }
+
+  test("times, relative to forLoop and plus") {
+    val times: φ[Nat, Nat ->: Nat] =
+      φ[Nat, Nat, Nat]((a, b) => forLoop(a)(zero)(plus(b)))
+
+    assert(times.size == 44) // should not be more than 17
+  }
+
   test("forLoop") {
     assert(sizeOf(forLoop[X]) == 270)
   }
 
   test("plus") {
     assert(sizeOf(plus) == 290)
-  }
-
-  test("plus, relative to forLoop") {
-    val plus: φ[Nat, Nat ->: Nat] =
-      φ[Nat, Nat, Nat]((a, b) => forLoop(a)(b)(inc))
-
-    assert(plus.size == 17)
   }
 
   test("times") {
