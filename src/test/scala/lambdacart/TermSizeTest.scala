@@ -112,6 +112,19 @@ class TermSizeTest extends FunSuite {
     assert(times.size == 18)
   }
 
+  test("forLoop, relative to doWhile") {
+    def forLoop[A]: φ[Nat, A ->: (A ->: A) ->: A] =
+      φ[Nat, A, (A ->: A),  A] { (n, a, f) =>
+        doWhile[A**Nat, A]( a**n )(both(_) { a => n =>
+          maybe[Nat, (A**Nat)\/A](dec(n)) (
+            _ => \/-(a)                  )(
+            n => -\/(f(a)**n)             )
+        })
+      }
+
+    assert(forLoop[String].size == 133) // should not be more than 43
+  }
+
   test("forLoop") {
     assert(sizeOf(forLoop[X]) == 236)
   }
