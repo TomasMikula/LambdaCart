@@ -1,7 +1,6 @@
 package lambdacart.util.typealigned
 
 import lambdacart.util.~~>
-import scala.annotation.tailrec
 import scalaz.{-\/, \/, \/-, ~>, Compose, Semigroup}
 
 
@@ -22,36 +21,30 @@ sealed abstract class AList1[F[_, _], A, B] {
   def tail: AList[F, A1, B]
 
   def ::[Z](fza: F[Z, A]): AList1[F, Z, B] =
-    ACons(fza, this)
+    ACons1(fza, this.toList)
 
   def uncons: Either[F[A, B], APair[F[A, ?], AList1[F, ?, B]]] =
-    this match {
-      case AJust(f) => Left(f)
-      case ACons(h, t) => Right(APair.of[F[A, ?], AList1[F, ?, B]](h, t))
+    tail match {
+      case ev @ ANil() => Left(ev.subst[F[A, ?]](head))
+      case ACons(h, t) => Right(APair.of[F[A, ?], AList1[F, ?, B]](head, ACons1(h, t)))
     }
 
   def :::[Z](that: AList1[F, Z, A]): AList1[F, Z, B] =
     that.reverse reverse_::: this
 
-  def reverse_:::[Z](that: Composed1[F, Z, A]): AList1[F, Z, B] = {
-    @inline def pair[X](rev: Composed1[F, Z, X], fs: AList1[F, X, B]) =
-      APair[Composed1[F, Z, ?], AList1[F, ?, B], X](rev, fs)
+  def reverse_:::[Z](that: Composed1[F, Z, A]): AList1[F, Z, B] =
+    that.toList reverse_::: this
 
-    @tailrec def go(p: APair[Composed1[F, Z, ?], AList1[F, ?, B]]): AList1[F, Z, B] = {
-      val (rev, fs) = (p._1, p._2)
-      rev.uncons match {
-        case Left(f) => f :: fs
-        case Right(ht) => go(pair(ht._2, ht._1 :: fs))
-      }
+  def reverse_:::[Z](that: AList.Composed[F, Z, A]): AList1[F, Z, B] =
+    (that reverse_::: this.toList) match {
+      case ACons(h, t) => ACons1(h, t)
+      case ANil()      => sys.error("unreachable code")
     }
 
-    go(pair(that, this))
-  }
-
   def :::[Z](that: AList[F, Z, A]): AList1[F, Z, B] =
-    that.uncons match {
-      case ANone(ev) => ev.flip.subst[AList1[F, ?, B]](this)
-      case ASome(list) => list ::: this
+    (that ::: this.toList) match {
+      case ACons(h, t) => ACons1(h, t)
+      case ANil()      => sys.error("unreachable code")
     }
 
   def ++[C](that: AList1[F, B, C]): AList1[F, A, C] =
@@ -60,65 +53,20 @@ sealed abstract class AList1[F[_, _], A, B] {
   def :+[C](f: F[B, C]): AList1[F, A, C] =
     this ::: AList1(f)
 
-  def reverse: Composed1[F, A, B] = {
-    @inline def pair[X](acc: Composed1[F, A, X], fs: AList1[F, X, B]) =
-      APair[Composed1[F, A, ?], AList1[F, ?, B], X](acc, fs)
+  def reverse: Composed1[F, A, B] = 
+    tail reverse_::: AList1[λ[(α, β) => F[β, α]], A1, A](head)
 
-    @tailrec def go(p: APair[Composed1[F, A, ?], AList1[F, ?, B]]): Composed1[F, A, B] = {
-      val (acc, fs) = (p._1, p._2)
-      fs match {
-        case AJust(f) => f :: acc
-        case ACons(h, t) => go(pair(h :: acc, t))
-      }
-    }
-
-    this match {
-      case AJust(f) => AList1.op[F, A, B](f)
-      case ACons(h, t) => go(pair(AList1.op(h), t))
-    }
-  }
-
-  def foldLeft[G[_]](ga: G[A])(φ: RightAction[G, F]): G[B] = {
-    @inline def pair[X](gx: G[X], fb: AList1[F, X, B]) =
-      APair[G, AList1[F, ?, B], X](gx, fb)
-
-    @tailrec def go(p: APair[G, AList1[F, ?, B]]): G[B] = {
-      val (gx, fs) = (p._1, p._2)
-      fs match {
-        case AJust(f) => φ.apply(gx, f)
-        case ACons(f, g) => go(pair(φ.apply(gx, f), g))
-      }
-    }
-
-    go(pair(ga, this))
-  }
+  def foldLeft[G[_]](ga: G[A])(φ: RightAction[G, F]): G[B] =
+    tail.foldLeft[G](φ.apply(ga, head))(φ)
 
   def foldLeft1[G[_]](init: F[A, ?] ~> G)(φ: RightAction[G, F]): G[B] =
-    this match {
-      case AJust(f)     => init(f)
-      case ACons(f, fs) => fs.foldLeft[G](init(f))(φ)
+    tail.foldLeft[G](init.apply(head))(φ)
+
+  def foldLeftWhile[G[_], H[_]](ga: G[A])(tr: λ[α => APair[G, F[?, α]]] ~> λ[α => H[α] \/ G[α]]): APair[H, AList[F, ?, B]] \/ G[B] =
+    tr.apply(APair.of[G, F[?, A1]](ga, head)) match {
+      case \/-(ga1) => tail.foldLeftWhile[G, H](ga1)(tr)
+      case -\/(ha1) => -\/(APair.of[H, AList[F, ?, B]](ha1, tail))
     }
-
-  def foldLeftWhile[G[_], H[_]](ga: G[A])(tr: λ[α => APair[G, F[?, α]]] ~> λ[α => H[α] \/ G[α]]): APair[H, AList[F, ?, B]] \/ G[B] = {
-    @inline def pair[X](gx: G[X], fb: AList1[F, X, B]) =
-      APair[G, AList1[F, ?, B], X](gx, fb)
-
-    @tailrec def go(p: APair[G, AList1[F, ?, B]]): APair[H, AList[F, ?, B]] \/ G[B] = {
-      val (gx, fs) = (p._1, p._2)
-      fs match {
-        case AJust(f) => tr[B](APair[G, F[?, B], p.A](gx, f)) match {
-          case -\/(hb) => -\/(APair[H, AList[F, ?, B], B](hb, AList.empty[F, B]))
-          case \/-(gb) => \/-(gb)
-        }
-        case fs @ ACons(f, gs) => tr(APair[G, F[?, fs.A1], p.A](gx, f)) match {
-          case -\/(hy) => -\/(APair[H, AList[F, ?, B], fs.A1](hy, gs.toList))
-          case \/-(gy) => go(pair(gy, gs))
-        }
-      }
-    }
-
-    go(pair(ga, this))
-  }
 
   def foldRight[G[_]](gb: G[B])(φ: LeftAction[G, F]): G[A] =
     reverse.foldLeft(gb)(RightAction.fromLeft(φ))
@@ -130,45 +78,26 @@ sealed abstract class AList1[F[_, _], A, B] {
    * Compose the elements of this list in a balanced binary fashion.
    */
   def fold(implicit F: Compose[F]): F[A, B] =
-    this match {
-      case ACons(f, g) => g.foldLeft[PostComposeBalancer[F, A, ?]](PostComposeBalancer(f))(PostComposeBalancer.rightAction).result
-      case AJust(f) => f
-    }
+    tail.foldLeft[PostComposeBalancer[F, A, ?]](PostComposeBalancer(head))(PostComposeBalancer.rightAction).result
 
   /**
    * Map and then compose the elements of this list in a balanced binary fashion.
    */
   def foldMap[G[_, _]](φ: F ~~> G)(implicit G: Compose[G]): G[A, B] =
-    this match {
-      case ACons(f, fs) => fs.foldLeft[PostComposeBalancer[G, A, ?]](PostComposeBalancer(φ.apply(f)))(PostComposeBalancer.rightAction(φ)).result
-      case AJust(f)     => φ.apply(f)
-    }
+    tail.foldLeft[PostComposeBalancer[G, A, ?]](PostComposeBalancer(φ.apply(head)))(PostComposeBalancer.rightAction(φ)).result
 
   def map[G[_, _]](φ: F ~~> G): AList1[G, A, B] =
-    this match {
-      case AJust(f)     => AJust(φ.apply(f))
-      case ACons(f, fs) => fs.foldLeft[Composed1[G, A, ?]](AList1.op(φ.apply(f)))(AList1.opConsMapAction(φ)).reverse
-    }
+    ACons1(φ.apply(head), tail.map(φ))
 
   def flatMap[G[_, _]](φ: F ~~> AList1[G, ?, ?]): AList1[G, A, B] =
-    this match {
-      case AJust(f)     => φ.apply(f)
-      case ACons(f, fs) => fs.foldLeft[Composed1[G, A, ?]](φ.apply(f).reverse)(ν[RightAction[Composed1[G, A, ?], F]][α, β]((acc, f) => φ.apply(f) reverse_::: acc)).reverse
-    }
+    foldRight1[AList1[G, ?, B]](λ[F[?, B] ~> AList1[G, ?, B]](φ.apply(_)))(ν[LeftAction[AList1[G, ?, B], F]][α, β]((f, gs) => φ.apply(f) ::: gs))
 
   def sum[S](φ: F ~~> λ[(α, β) => S])(implicit S: Semigroup[S]): S =
     foldMap[λ[(α, β) => S]](φ)(S.compose)
 
-  def size: Int = {
-    @tailrec def go(acc: Int, fs: AList1[F, _, _]): Int = fs match {
-      case ACons(_, fs) => go(acc + 1, fs)
-      case AJust(_)     =>    acc + 1
-    }
+  def size: Int = 1 + tail.size
 
-    go(0, this)
-  }
-
-  def toList: AList[F, A, B] = AList(this)
+  def toList: AList[F, A, B] = head :: tail
 
   override def toString: String = {
     val sb = new StringBuilder("AList1(")
@@ -176,15 +105,8 @@ sealed abstract class AList1[F[_, _], A, B] {
   }
 }
 
-final case class AJust[F[_, _], A, B](value: F[A, B]) extends AList1[F, A, B] {
-  type A1 = B
-  def head = value
-  def tail = AList.empty
-}
-
-final case class ACons[F[_, _], A, B, C](head: F[A, B], tail1: AList1[F, B, C]) extends AList1[F, A, C] {
-  type A1 = B
-  def tail = tail1.toList
+final case class ACons1[F[_, _], A, X, B](head: F[A, X], tail: AList[F, X, B]) extends AList1[F, A, B] {
+  type A1 = X
 }
 
 object AList1 {
@@ -213,7 +135,7 @@ object AList1 {
    */
   type Composed1[F[_, _], A, B] = AList1[λ[(α, β) => F[β, α]], B, A]
 
-  def apply[F[_, _], A, B](f: F[A, B]): AList1[F, A, B] = AJust(f)
+  def apply[F[_, _], A, B](f: F[A, B]): AList1[F, A, B] = ACons1(f, AList.empty)
   def op[F[_, _], A, B](f: F[A, B]): Composed1[F, A, B] = apply[λ[(α, β) => F[β, α]], B, A](f)
 
   def consAction[F[_, _], B]: LeftAction[AList1[F, ?, B], F] =

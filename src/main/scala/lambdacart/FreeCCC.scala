@@ -2,7 +2,7 @@ package lambdacart
 
 import lambdacart.util.~~>
 import lambdacart.util.LeibnizOps
-import lambdacart.util.typealigned.{AJust, AList, AList1, ANone, ASome, LeftAction}
+import lambdacart.util.typealigned.{ACons, AList, AList1, ANil, LeftAction}
 import scala.annotation.tailrec
 import scalaz.{~>, Leibniz}
 import scalaz.Leibniz.===
@@ -283,11 +283,13 @@ object FreeCCC {
     final override def apply(f: Sequence[A, B]): Option[A :=>: B] = {
       type G[α] = AList1[:=>:, α, B]
       f.fs.foldRight1[G](λ[(? :=>: B) ~> G](AList1(_)))(ν[LeftAction[G, :=>:]][α, β]((f, acc) => self(f, acc.head) match {
-        case Some(f) => f :: acc.tail
+        case Some(f) => f +: acc.tail
         case None    => f :: acc
-      })) match {
-        case AJust(f) => Some(f)
-        case fs       => if(fs.size < f.fs.size) Some(Sequence(fs)) else None
+      })).uncons match {
+        case Left(f)   => Some(f)
+        case Right(ht) =>
+          val fs = ht._1 :: ht._2
+          if(fs.size < f.fs.size) Some(Sequence(fs)) else None
       }
     }
   }
@@ -363,12 +365,12 @@ object FreeCCC {
     Sequence(f :: AList1(g))
 
   private[FreeCCC] def sequence[:->:[_, _], **[_, _], T, H[_, _], A, B](fs: AList[FreeCCC[:->:, **, T, H, ?, ?], A, B]): FreeCCC[:->:, **, T, H, A, B] =
-    fs.uncons match {
-      case ASome(list) => list match {
-        case AJust(f) => f
-        case _        => Sequence(list)
+    fs match {
+      case ev @ ANil()   => id[:->:, **, T, H, A].castB(ev.leibniz)
+      case ACons(f1, fs1) => fs1 match {
+        case ev @ ANil() => f1.castB(ev.leibniz)
+        case ACons(f2, fs2) => Sequence(f1 +: (f2 :: fs2))
       }
-      case ANone(ev)   => id[:->:, **, T, H, A].castB(ev)
     }
 
   def flip[:->:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:->:, **, T, H, (A**B), C]): FreeCCC[:->:, **, T, H, (B**A), C] =
@@ -490,7 +492,7 @@ object FreeCCC {
                       override def apply[V](sh: Snd[V, sSeq.A1])(implicit ev3: (V ** sSeq.A1) === Y) = {
                         val ev4: rSeq.A1 === P = rh.deriveLeibniz(ev.flip.compose(ev2))
                         val ev5: sSeq.A1 === Q = sh.deriveLeibniz(ev.flip.compose(ev3))
-                        Some(prod(Sequence(p.f.castB(ev4.flip) :: rt), Sequence(p.g.castB(ev5.flip) :: st)).castB[Z])
+                        Some(prod(Sequence(p.f.castB(ev4.flip) +: rt), Sequence(p.g.castB(ev5.flip) +: st)).castB[Z])
                       }
                     })
                   // reduce `prod(f1, f2) >>> prod(snd >>> g1, fst >>> g2)` to `prod(f2 >>> g1, f1 >>> g2)`
@@ -499,7 +501,7 @@ object FreeCCC {
                       override def apply[V](sh: Fst[sSeq.A1, V])(implicit ev3: (sSeq.A1 ** V) === Y) = {
                         val ev4: rSeq.A1 === Q = rh.deriveLeibniz(ev.flip.compose(ev2))
                         val ev5: sSeq.A1 === P = sh.deriveLeibniz(ev.flip.compose(ev3))
-                        Some(prod(Sequence(p.g.castB(ev4.flip) :: rt), Sequence(p.f.castB(ev5.flip) :: st)).castB[Z])
+                        Some(prod(Sequence(p.g.castB(ev4.flip) +: rt), Sequence(p.f.castB(ev5.flip) +: st)).castB[Z])
                       }
                     })
                 })
@@ -554,7 +556,7 @@ object FreeCCC {
             fh.visit(new fh.OptVisitor[A :=>: B] {
               override def apply(fh: Terminal[A])(implicit ev1: T === fs.A1) = f.g match {
                 case Id() => None // prevent infinite expansion of `prod(terminal >>> ft, id)`
-                case g    => Some(sequence(g, Prod(Sequence(Terminal[Y]().castB(ev1) :: ft), Id[Y]())).castB[B])
+                case g    => Some(sequence(g, Prod(Sequence(Terminal[Y]().castB(ev1) +: ft), Id[Y]())).castB[B])
               }
             }) orElse
             //
@@ -562,7 +564,7 @@ object FreeCCC {
             gh.visit(new gh.OptVisitor[A :=>: B] {
               override def apply(gh: Terminal[A])(implicit ev1: T === gs.A1) = f.f match {
                 case Id() => None // prevent infinite expansion of `prod(id, terminal >>> gt)`
-                case f    => Some(sequence(f, Prod(Id[X](), Sequence(Terminal[X]().castB(ev1) :: gt))).castB[B])
+                case f    => Some(sequence(f, Prod(Id[X](), Sequence(Terminal[X]().castB(ev1) +: gt))).castB[B])
               }
             }) orElse
             //

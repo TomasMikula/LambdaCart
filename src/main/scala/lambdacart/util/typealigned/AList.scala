@@ -1,45 +1,69 @@
 package lambdacart.util.typealigned
 
+import scala.annotation.tailrec
 import lambdacart.util.~~>
-import scalaz.{\/, \/-, ~>, Category, Monoid}
+import scalaz.{\/, -\/, \/-, ~>, Category, Compose, Leibniz, Monoid}
+import scalaz.Leibniz.===
 
 /**
  * A potentially empty type-aligned list.
  */
-final class AList[F[_, _], A, B] private (val uncons: AOption[AList1[F, ?, ?], A, B]) extends AnyVal {
+sealed abstract class AList[F[_, _], A, B] {
   import AList._
 
-  def ::[Z](fza: F[Z, A]): AList1[F, Z, B] =
-    uncons match {
-      case ANone(ev)   => ev.subst[AList1[F, Z, ?]](AList1(fza))
-      case ASome(list) => fza :: list
-    }
+  def ::[Z](fza: F[Z, A]): AList[F, Z, B] = ACons(fza, this)
 
-  def +:[Z](fza: F[Z, A]): AList[F, Z, B] = (fza :: this).toList
+  def +:[Z](fza: F[Z, A]): AList1[F, Z, B] = ACons1(fza, this)
 
   def :::[Z](that: AList[F, Z, A]): AList[F, Z, B] =
-    uncons match {
-      case ANone(ev)   => ev.subst[AList[F, Z, ?]](that)
-      case ASome(list) => AList(that ::: list)
-    }
+    that.reverse reverse_::: this
 
-  def reverse: Composed[F, A, B] =
-    uncons match {
-      case ANone(ev)   => ev.subst[AList[Op[F, ?, ?], ?, A]](empty[Op[F, ?, ?], A])
-      case ASome(list) => AList[Op[F, ?, ?], B, A](list.reverse)
+  def reverse: Composed[F, A, B] = {
+    @tailrec def go(p: APair[AList[F, ?, B], Composed[F, A, ?]]): Composed[F, A, B] = {
+      val (fs, acc) = (p._1, p._2)
+      fs match {
+        case ACons(h, t)  => go(APair.of[AList[F, ?, B], Composed[F, A, ?]](t, h :: acc))
+        case nil @ ANil() => nil.subst[Composed[F, A, ?]](acc)
+      }
     }
+    go(APair.of[AList[F, ?, B], Composed[F, A, ?]](this, empty[λ[(α, β) => F[β, α]], A]))
+  }
 
-  def foldLeft[G[_]](ga: G[A])(φ: RightAction[G, F]): G[B] =
-    uncons match {
-      case ANone(ev)   => ev.subst(ga)
-      case ASome(list) => list.foldLeft(ga)(φ)
+  def reverse_:::[Z](that: Composed[F, Z, A]): AList[F, Z, B] = {
+    @tailrec def go[G[_, _]](p: APair[AList[G, ?, Z], Composed[G, B, ?]]): Composed[G, B, Z] = {
+      val (gs, acc) = (p._1, p._2)
+      gs match {
+        case ACons(g, gs) => go(APair.of[AList[G, ?, Z], Composed[G, B, ?]](gs, g :: acc))
+        case nil @ ANil() => nil.subst[Composed[G, B, ?]](acc)
+      }
     }
+    go[λ[(α, β) => F[β, α]]](APair.of[AList[λ[(α, β) => F[β, α]], ?, Z], Composed[λ[(α, β) => F[β, α]], B, ?]](that, this))
+  }
 
-  def foldLeftWhile[G[_], H[_]](ga: G[A])(tr: λ[α => APair[G, F[?, α]]] ~> λ[α => H[α] \/ G[α]]): APair[H, AList[F, ?, B]] \/ G[B] =
-    uncons match {
-      case ANone(ev)   => \/-(ev.subst(ga))
-      case ASome(list) => list.foldLeftWhile(ga)(tr)
+  def foldLeft[G[_]](ga: G[A])(φ: RightAction[G, F]): G[B] = {
+    @tailrec def go(p: APair[G, AList[F, ?, B]]): G[B] = {
+      val (g, fs) = (p._1, p._2)
+      fs match {
+        case ACons(h, t)  => go(APair.of[G, AList[F, ?, B]](φ.apply(g, h), t))
+        case nil @ ANil() => nil.subst(g)
+      }
     }
+    go(APair.of[G, AList[F, ?, B]](ga, this))
+  }
+
+  def foldLeftWhile[G[_], H[_]](ga: G[A])(φ: λ[α => APair[G, F[?, α]]] ~> λ[α => H[α] \/ G[α]]): APair[H, AList[F, ?, B]] \/ G[B] = {
+    @tailrec def go(p: APair[G, AList[F, ?, B]]): APair[H, AList[F, ?, B]] \/ G[B] = {
+      val (gx, lxb) = (p._1, p._2)
+      lxb match {
+        case c @ ACons(h, t) => φ(APair.of[G, F[?, c.Joint]](gx, h)) match {
+          case \/-(gy) => go(APair.of[G, AList[F, ?, B]](gy, t))
+          case -\/(hy) => -\/(APair.of[H, AList[F, ?, B]](hy, t))
+        }
+        case nil @ ANil() => \/-(nil.subst(gx))
+      }
+    }
+    go(APair.of[G, AList[F, ?, B]](ga, this))
+  }
 
   def foldRight[G[_]](gb: G[B])(φ: LeftAction[G, F]): G[A] =
     reverse.foldLeft(gb)(RightAction.fromLeft(φ))
@@ -48,31 +72,64 @@ final class AList[F[_, _], A, B] private (val uncons: AOption[AList1[F, ?, ?], A
    * Compose the elements of this list in a balanced binary fashion.
    */
   def fold(implicit F: Category[F]): F[A, B] =
-    uncons match {
-      case ASome(list) => list.fold
-      case ANone(ev)   => ev.subst[F[A, ?]](F.id[A])
+    this match {
+      case ACons(h, t)  => t.foldLeft[PostComposeBalancer[F, A, ?]](PostComposeBalancer(h))(PostComposeBalancer.rightAction).result
+      case nil @ ANil() => nil.subst[F[A, ?]](F.id[A])
+    }
+
+  /**
+   * Compose the elements of this list in a balanced binary fashion.
+   */
+  def foldOpt(implicit F: Compose[F]): AOption[F, A, B] =
+    this match {
+      case ACons(h, t)  => ASome(t.foldLeft[PostComposeBalancer[F, A, ?]](PostComposeBalancer(h))(PostComposeBalancer.rightAction).result)
+      case nil @ ANil() => nil.subst[AOption[F, A, ?]](AOption.empty[F, A])
     }
 
   /**
    * Map and then compose the elements of this list in a balanced binary fashion.
    */
   def foldMap[G[_, _]](φ: F ~~> G)(implicit G: Category[G]): G[A, B] =
-    uncons match {
-      case ASome(list) => list.foldMap(φ)
-      case ANone(ev)   => ev.subst[G[A, ?]](G.id[A])
+    this match {
+      case ACons(h, t)  => t.foldLeft[PostComposeBalancer[G, A, ?]](PostComposeBalancer(φ.apply(h)))(PostComposeBalancer.rightAction(φ)).result
+      case nil @ ANil() => nil.subst[G[A, ?]](G.id[A])
+    }
+
+  /**
+   * Map and then compose the elements of this list in a balanced binary fashion.
+   */
+  def foldMapOpt[G[_, _]](φ: F ~~> G)(implicit G: Compose[G]): AOption[G, A, B] =
+    this match {
+      case ACons(h, t)  => ASome(t.foldLeft[PostComposeBalancer[G, A, ?]](PostComposeBalancer(φ.apply(h)))(PostComposeBalancer.rightAction(φ)).result)
+      case nil @ ANil() => nil.subst[AOption[G, A, ?]](AOption.empty[G, A])
     }
 
   def map[G[_, _]](φ: F ~~> G): AList[G, A, B] =
-    uncons match {
-      case ASome(list) => AList(list.map(φ))
-      case ANone(ev)   => ev.subst[AList[G, A, ?]](empty[G, A])
-    }
+    foldRight[AList[G, ?, B]](empty[G, B])(ν[LeftAction[AList[G, ?, B], F]][α, β]((f, gs) => φ.apply(f) :: gs))
 
   def flatMap[G[_, _]](φ: F ~~> AList[G, ?, ?]): AList[G, A, B] =
-    foldRight[AList[G, ?, B]](empty[G, B])(ν[LeftAction[AList[G, ?, B], F]][α, β]((f, acc) => φ.apply(f) ::: acc))
+    foldRight[AList[G, ?, B]](empty[G, B])(ν[LeftAction[AList[G, ?, B], F]][α, β]((f, gs) => φ.apply(f) ::: gs))
 
   def sum[M](φ: F ~~> λ[(α, β) => M])(implicit M: Monoid[M]): M =
     foldMap[λ[(α, β) => M]](φ)(M.category)
+
+  def size: Int = {
+    @tailrec def go(acc: Int, fs: AList[F, _, _]): Int = fs match {
+      case ACons(_, t) => go(acc + 1, t)
+      case ANil()      => acc
+    }
+    go(0, this)
+  }
+}
+
+final case class ACons[F[_, _], A, X, B](head: F[A, X], tail: AList[F, X, B]) extends AList[F, A, B] {
+  final type Joint = X
+}
+
+sealed abstract case class ANil[F[_, _], A, B]() extends AList[F, A, B] {
+  def   subst[G[_]](ga: G[A]): G[B]
+  def unsubst[G[_]](gb: G[B]): G[A]
+  def leibniz: A === B = subst[A === ?](Leibniz.refl[A])
 }
 
 object AList {
@@ -80,7 +137,13 @@ object AList {
   type Op[F[_, _], A, B] = F[B, A]
   type Composed[F[_, _], A, B] = AList[Op[F, ?, ?], B, A]
 
-  def apply[F[_, _], A, B](l: AList1[F, A, B]): AList[F, A, B] = new AList(ASome(l))
   def apply[F[_, _], A](): AList[F, A, A] = empty
-  def empty[F[_, _], A]: AList[F, A, A] = new AList[F, A, A](AOption.empty)
+  def apply[F[_, _], A, B](f: F[A, B]): AList[F, A, B] = f :: empty
+  def empty[F[_, _], A]: AList[F, A, A] = Nil.asInstanceOf[AList[F, A, A]]
+
+  private val Nil = nil[Nothing, Nothing]
+  private def nil[F[_, _], A]: ANil[F, A, A] = new ANil[F, A, A] {
+    def   subst[G[_]](ga: G[A]): G[A] = ga
+    def unsubst[G[_]](gb: G[A]): G[A] = gb
+  }
 }

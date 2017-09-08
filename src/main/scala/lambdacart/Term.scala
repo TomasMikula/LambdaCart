@@ -1,7 +1,7 @@
 package lambdacart
 
 import lambdacart.util.{~~>, LeibnizOps}
-import lambdacart.util.typealigned.{ACons, AJust}
+import lambdacart.util.typealigned.{ACons, ANil}
 import scalaz.Leibniz
 import scalaz.Leibniz.===
 
@@ -294,11 +294,11 @@ object CodeTerm {
     def caseCurry  [X, Y](f: φ[(A**X), Y])       (implicit ev: Hom[X,Y] === B) : R
     def caseUncurry[X, Y](f: φ[X, Hom[Y, B]])    (implicit ev: (X ** Y) === A) : R
 
-    final override def apply(f: Sequence[A, B]) = f.fs match {
-      case AJust(f)     => f.visit(this)
-      case c @ ACons(f, fs) => fs match {
-        case AJust(g) => caseCompose(wrap(g), wrap(f))
-        case fs       => caseCompose(wrap(Sequence(fs)), wrap(f))
+    final override def apply(f: Sequence[A, B]) = f.fs.tail match {
+      case ev @ ANil()   => f.fs.head.castB(ev.leibniz).visit(this)
+      case ACons(f1, fs) => fs match {
+        case ev @ ANil() => caseCompose(wrap(f1.castB(ev.leibniz)), wrap(f.fs.head))
+        case fs          => caseCompose(wrap(Sequence(f1 +: fs)), wrap(f.fs.head))
       }
     }
 
