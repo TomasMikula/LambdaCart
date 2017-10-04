@@ -137,16 +137,4 @@ object AList1 {
 
   def apply[F[_, _], A, B](f: F[A, B]): AList1[F, A, B] = ACons1(f, AList.empty)
   def op[F[_, _], A, B](f: F[A, B]): Composed1[F, A, B] = apply[λ[(α, β) => F[β, α]], B, A](f)
-
-  def consAction[F[_, _], B]: LeftAction[AList1[F, ?, B], F] =
-    ν[LeftAction[AList1[F, ?, B], F]][α, β]((f, fs) => f :: fs)
-
-  def consMapAction[G[_, _], F[_, _], B](φ: F ~~> G): LeftAction[AList1[G, ?, B], F] =
-    ν[LeftAction[AList1[G, ?, B], F]][α, β]((f, gs) => φ.apply(f) :: gs)
-
-  def opConsAction[F[_, _], A]: RightAction[Composed1[F, A, ?], F] =
-    ν[RightAction[Composed1[F, A, ?], F]][α, β]((fs, f) => f :: fs)
-
-  def opConsMapAction[G[_, _], F[_, _], A](φ: F ~~> G): RightAction[Composed1[G, A, ?], F] =
-    ν[RightAction[Composed1[G, A, ?], F]][α, β]((gs, f) => φ.apply(f) :: gs)
 }
