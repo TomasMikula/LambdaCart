@@ -29,6 +29,12 @@ sealed abstract class AList1[F[_, _], A, B] {
       case ACons(h, t) => Right(APair.of[F[A, ?], AList1[F, ?, B]](head, ACons1(h, t)))
     }
 
+  def unsnoc: Either[F[A, B], APair[AList1[F, A, ?], F[?, B]]] =
+    reverse.uncons match {
+      case Left(f)  => Left(f)
+      case Right(p) => Right(APair.of[AList1[F, A, ?], F[?, B]](p._2.reverse, p._1))
+    }
+
   def :::[Z](that: AList1[F, Z, A]): AList1[F, Z, B] =
     that.reverse reverse_::: this
 
