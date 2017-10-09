@@ -18,6 +18,7 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] {
   type BinTransformer = FreeCCC.BinTransformer[:->:, **, T, H, A, B]
 
   type RewriteRule = FreeCCC.RewriteRule[:->:, **, T, H]
+  type ClosedRewriteRule = FreeCCC.ClosedRewriteRule[:->:, **, T, H]
 
   /** Workaround for Scala's broken GADT pattern matching. */
   def visit[R](v: Visitor[R]): R
@@ -90,55 +91,29 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] {
     def apply      (a:     Lift[A, B])                                 = 1
   })
 
-  /** Applies the first matching rule to this node.
-    * Doesn't recursively descend to child nodes.
-    */
-  @tailrec
-  private def rewrite(rules: List[RewriteRule]): Option[FreeCCC[:->:, **, T, H, A, B]] =
-    rules match {
-      case r :: rs => r[A, B](this) match {
-        case Some(f) => Some(f)
-        case None    => this.rewrite(rs)
+  private def optimize(rules: RewriteRule): FreeCCC[:->:, **, T, H, A, B] = {
+    val rr = ν[ClosedRewriteRule].rewrite[X, Y](self =
+      new Function1[X :=>: Y, Option[X :=>: Y]] {
+        @tailrec def apply(f: X :=>: Y) = f match {
+          case Optimized(_) | Id() | Lift(_)  => Some(f)
+          case _: Terminal[:->:, **, T, H, X] => Some(f) // case Terminal() not accepted by scalac
+          case _: Fst[:->:, **, T, H, x, y]   => Some(f) // case Fst() not accepted by scalac
+          case _: Snd[:->:, **, T, H, x, y]   => Some(f) // case Snd() not accepted by scalac
+          case f =>
+            val g = f.transformChildren(self)
+            rules.rewriteRec(g)(self) match {
+              case Some(h) => this.apply(h)
+              case None    => Some(Optimized(g))
+            }
+        }
       }
-      case Nil     => None
-    }
+    )
 
-  @tailrec
-  private def optimize(rules: List[RewriteRule]): FreeCCC[:->:, **, T, H, A, B] = this match {
-    case Optimized(_) | Id() | Terminal() | Lift(_) => this
-    case _: Fst[:->:, **, T, H, a, B] => this // case Fst() not accepted by scalac
-    case _: Snd[:->:, **, T, H, a, B] => this // case Snd() not accepted by scalac
-    case f =>
-      val g = f.optimizeChildren(rules)
-      g.rewrite(rules) match {
-        case Some(h) => h.optimize(rules)
-        case None    => Optimized(g)
-      }
+    rr.rewrite(this).getOrElse(this)
   }
 
   private[FreeCCC] def optim: FreeCCC[:->:, **, T, H, A, B] =
     optimize(genericRules)
-
-  private def optimizeChildren(rules: List[RewriteRule]): FreeCCC[:->:, **, T, H, A, B] =
-    visit(new Visitor[FreeCCC[:->:, **, T, H, A, B]] {
-      def apply   (f:     Lift[A, B])                              = f
-      def apply   (f:       Id[A]   )(implicit ev:        A === B) = f.castB[B]
-      def apply[X](f:      Fst[B, X])(implicit ev: (B ** X) === A) = f.castA[A]
-      def apply[X](f:      Snd[X, B])(implicit ev: (X ** B) === A) = f.castA[A]
-      def apply   (f: Terminal[A]   )(implicit ev:        T === B) = f.castB[B]
-
-      def apply(f: Sequence[A, B]) =
-        Sequence(f.fs.map(ν[:=>: ~~> :=>:][α, β](_.optimize(rules))))
-
-      def apply[X, Y](f: Prod[A, X, Y])(implicit ev: (X ** Y) === B) =
-        Prod(f.f.optimize(rules), f.g.optimize(rules)).castB[B]
-
-      def apply[X, Y](f: Curry[A, X, Y])(implicit ev:  H[X, Y] === B) =
-        Curry(f.f.optimize(rules)).castB[B]
-
-      def apply[X, Y](f: Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) =
-        Uncurry(f.f.optimize(rules)).castA[A]
-    })
 
   private[FreeCCC] def rmTags: FreeCCC[:->:, **, T, H, A, B] =
     rebuild(~~>.identity[:=>:])
@@ -147,7 +122,7 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] {
     φ.apply(transformChildren(ν[:=>: ~~> :=>:][α, β](_.rebuild(φ))))
 
   private[FreeCCC] def transformChildren(φ: :=>: ~~> :=>:): A :=>: B =
-    visit(new Visitor[FreeCCC[:->:, **, T, H, A, B]] {
+    visit(new Visitor[A :=>: B] {
       def apply   (f:     Lift[A, B])                              = f
       def apply   (f:       Id[A]   )(implicit ev:        A === B) = f.castB[B]
       def apply[X](f:      Fst[B, X])(implicit ev: (B ** X) === A) = f.castA[A]
@@ -297,14 +272,39 @@ object FreeCCC {
   trait RewriteRule[:->:[_, _], **[_, _], T, H[_, _]] {
     type :=>:[A, B] = FreeCCC[:->:, **, T, H, A, B]
 
-    def apply[A, B]: (A :=>: B) => Option[A :=>: B]
+    def rewriteRec[A, B]: (A :=>: B) => ClosedRewriteRule[:->:, **, T, H] => Option[A :=>: B]
   }
 
-  trait Rewriter[:->:[_, _], **[_, _], T, H[_, _]] extends RewriteRule[:->:, **, T, H] {
-    def visitor[A, B]: OptVisitor[:->:, **, T, H, A, B, A :=>: B]
+  trait ClosedRewriteRule[:->:[_, _], **[_, _], T, H[_, _]]
+  extends RewriteRule[:->:, **, T, H]
+     with (FreeCCC[:->:, **, T, H, ?, ?] ~~> λ[(α, β) => FreeCCC[:->:, **, T, H, α, β]]) {
 
-    final override def apply[A, B]: (A :=>: B) => Option[A :=>: B] =
-      _.visit(visitor[A, B])
+    def rewrite[A, B]: (A :=>: B) => Option[A :=>: B]
+
+    def apply[A, B]: (A :=>: B) => (A :=>: B) =
+      f => rewrite[A, B](f).getOrElse(f)
+
+    def rewriteRec[A, B]: (A :=>: B) => ClosedRewriteRule[:->:, **, T, H] => Option[A :=>: B] =
+      f => _ => rewrite(f)
+  }
+
+  object RewriteRule {
+    def noop[:->:[_, _], **[_, _], T, H[_, _]]: RewriteRule[:->:, **, T, H] =
+      ν[RewriteRule[:->:, **, T, H]].rewriteRec[A, B](f => rec => None)
+
+    def sequence[:->:[_, _], **[_, _], T, H[_, _]](rules: RewriteRule[:->:, **, T, H]*): RewriteRule[:->:, **, T, H] =
+      sequence(rules.toList)
+
+    def sequence[:->:[_, _], **[_, _], T, H[_, _]](rules: List[RewriteRule[:->:, **, T, H]]): RewriteRule[:->:, **, T, H] =
+      rules match {
+        case Nil      => noop
+        case r :: Nil => r
+        case r :: rs =>
+          val r2 = sequence(rs)
+          ν[RewriteRule[:->:, **, T, H]].rewriteRec[A, B](f => rec =>
+            r.rewriteRec(f)(rec) orElse r2.rewriteRec(f)(rec)
+          )
+      }
   }
 
   implicit def cccInstance[:->:[_, _], &[_, _], T, H[_, _]]: CCC.Aux[FreeCCC[:->:, &, T, H, ?, ?], &, T, H] =
@@ -396,10 +396,10 @@ object FreeCCC {
     prod(prod(pa, pb), pc)
   }
 
-  private[FreeCCC] def genericRules[:->:[_, _], **[_, _], T, H[_, _]]: List[RewriteRule[:->:, **, T, H]] = {
-    type Rewriter = FreeCCC.Rewriter[:->:, **, T, H]
-    List(
-      ν[Rewriter].visitor[A, B](new BinTransformer[:->:, **, T, H, A, B] {
+  private[FreeCCC] def genericRules[:->:[_, _], **[_, _], T, H[_, _]]: RewriteRule[:->:, **, T, H] = {
+    type ClosedRewriteRule = FreeCCC.ClosedRewriteRule[:->:, **, T, H]
+    RewriteRule.sequence[:->:, **, T, H](
+      ν[ClosedRewriteRule].rewrite[A, B](f => f.visit(new BinTransformer[:->:, **, T, H, A, B] {
         override def apply   (f:     Lift[A, B])                              = None
         override def apply   (f:       Id[A]   )(implicit ev:        A === B) = None
         override def apply[X](f:      Fst[B, X])(implicit ev: (B ** X) === A) = None
@@ -651,7 +651,7 @@ object FreeCCC {
             case Id() => None
             case f0   => Some(sequence(Prod(sequence(Fst[X, Y](), f0), Snd[X, Y]()), Uncurry(Id[H[Y, B]]())).castA[A])
           }
-      })
+      }))
     )
   }
 }
