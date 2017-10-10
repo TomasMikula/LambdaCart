@@ -2,7 +2,7 @@ package lambdacart
 
 import lambdacart.util.~~>
 import lambdacart.util.LeibnizOps
-import lambdacart.util.typealigned.{ACons, AList, AList1, ANil, LeftAction}
+import lambdacart.util.typealigned.{ACons, AList, AList1, ANil, APair, LeftAction}
 import scala.annotation.tailrec
 import scalaz.{~>, Leibniz}
 import scalaz.Leibniz.===
@@ -91,6 +91,19 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] {
     def apply      (a:     Lift[A, B])                                 = 1
   })
 
+  /** Returns `true` iff this `FreeCCC` instance doesn't contain any instances of `:->:`. */
+  final def isPure: Boolean = visit(new Visitor[Boolean] {
+    def apply      (a: Sequence[A, B]   ) = a.fs.all(Λ[α, β](_.isPure): :=>: ~~> λ[(χ, υ) => Boolean])
+    def apply[Y, Z](a:    Curry[A, Y, Z])(implicit ev:  H[Y, Z] === B) = a.f.isPure
+    def apply[X, Y](a:  Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) = a.f.isPure
+    def apply[Y, Z](a:     Prod[A, Y, Z])(implicit ev:   (Y**Z) === B) = a.f.isPure && a.g.isPure
+    def apply[Y]   (a:      Fst[B, Y])   (implicit ev:   (B**Y) === A) = true
+    def apply[X]   (a:      Snd[X, B])   (implicit ev:   (X**B) === A) = true
+    def apply      (a:       Id[A])      (implicit ev:        A === B) = true
+    def apply      (a: Terminal[A])      (implicit ev:        T === B) = true
+    def apply      (a:     Lift[A, B])                                 = false
+  })
+
   private def optimize(rules: RewriteRule): FreeCCC[:->:, **, T, H, A, B] = {
     val rr = ν[ClosedRewriteRule].rewrite[X, Y](self =
       new Function1[X :=>: Y, Option[X :=>: Y]] {
@@ -140,6 +153,62 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] {
 
       def apply[X, Y](f: Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) =
         Uncurry(φ.apply(f.f)).castA[A]
+    })
+
+  private[FreeCCC] def split: Option[APair[A :=>: ?, ? :=>: B]] = visit(new OptVisitor[APair[A :=>: ?, ? :=>: B]] {
+    override def apply(f: Sequence[A, B]) = f.fs.unsnoc match {
+      case Left(f)  => f.split
+      case Right(p) =>
+        val (fs, f) = (p._1, p._2)
+        if(f.isCandidateForInlining) Some(APair.of[A :=>: ?, ? :=>: B](Sequence(fs), f))
+        else f.split match {
+          case None    => None
+          case Some(p) =>
+            val (f, g) = (p._1, p._2)
+            Some(APair.of[A :=>: ?, ? :=>: B](Sequence(fs :+ f), g))
+        }
+    }
+    override def apply[X, Y](p: Prod[A, X, Y])(implicit ev: (X ** Y) === B) =
+      if      (p.f.isCandidateForInlining)
+        Some(APair.of[A :=>: ?, ? :=>: B](Prod(Id(), p.g), Prod[A ** Y, X, Y](sequence(Fst(), p.f), Snd()).castB[B]))
+      else if (p.g.isCandidateForInlining)
+        Some(APair.of[A :=>: ?, ? :=>: B](Prod(p.f, Id()), Prod[X ** A, X, Y](Fst(), sequence(Snd(), p.g)).castB[B]))
+      else (p.f.split, p.g.split) match {
+        case (Some(f), _) =>
+          Some(APair.of[A :=>: ?, ? :=>: B](Prod(f._1, p.g), Prod[f.A ** Y, X, Y](sequence(Fst(), f._2), Snd()).castB[B]))
+        case (_, Some(g)) =>
+          Some(APair.of[A :=>: ?, ? :=>: B](Prod(p.f, g._1), Prod[X ** g.A, X, Y](Fst(), sequence(Snd(), g._2)).castB[B]))
+        case (None, None) =>
+          None
+      }
+  })
+
+  private[FreeCCC] def isCandidateForInlining: Boolean = {
+    visit(new OptVisitor[Boolean] {
+      override def apply[X, Y](p: Prod[A, X, Y])(implicit ev: (X ** Y) === B) =
+        if (p.f.isPure && p.g.isPure) Some(true)
+        else Some(false)
+    }).getOrElse(false)
+  }
+
+  private[FreeCCC] def inline[Z](g: Z :=>: A)(reduce: ClosedRewriteRule): Option[Z :=>: B] =
+    visit(new OptVisitor[Z :=>: B] {
+
+      override def apply(f: Sequence[A, B]) =
+        f.fs.head.inline(g)(reduce) map { f1 => Sequence(f1 +: f.fs.tail) }
+
+      override def apply[X, Y](f: Prod[A, X, Y])(implicit ev: (X ** Y) === B) =
+        (f.f.inline(g)(reduce), f.g.inline(g)(reduce)) match {
+          case (Some(f1), Some(f2)) => Some(Prod(f1, f2).castB[B])
+          case (Some(f1), None    ) => Some(Prod(f1, sequence(g, f.g)).castB[B])
+          case (None    , Some(f2)) => Some(Prod(sequence(g, f.f), f2).castB[B])
+          case _                    => None
+        }
+
+      override def apply[X, Y](f: Curry[A, X, Y])(implicit ev: H[X, Y] === B) =
+        for {
+          f <- reduce.rewrite[Z ** X, Y](sequence(Prod(sequence(Fst(), g), Snd()), f.f))
+        } yield Curry(f).castB[B]
     })
 }
 
@@ -397,7 +466,9 @@ object FreeCCC {
   }
 
   private[FreeCCC] def genericRules[:->:[_, _], **[_, _], T, H[_, _]]: RewriteRule[:->:, **, T, H] = {
+    type       RewriteRule = FreeCCC.      RewriteRule[:->:, **, T, H]
     type ClosedRewriteRule = FreeCCC.ClosedRewriteRule[:->:, **, T, H]
+
     RewriteRule.sequence[:->:, **, T, H](
       ν[ClosedRewriteRule].rewrite[A, B](f => f.visit(new BinTransformer[:->:, **, T, H, A, B] {
         override def apply   (f:     Lift[A, B])                              = None
@@ -651,6 +722,20 @@ object FreeCCC {
             case Id() => None
             case f0   => Some(sequence(Prod(sequence(Fst[X, Y](), f0), Snd[X, Y]()), Uncurry(Id[H[Y, B]]())).castA[A])
           }
+      })),
+
+      ν[RewriteRule].rewriteRec[A, B](f => rec => f.visit(new BinTransformer[:->:, **, T, H, A, B] {
+        override def apply[X, Y, Z](f: X :=>: Y, g: Y :=>: Z) =
+          (
+            if (f.isCandidateForInlining) g.inline(f)(rec)
+            else None
+          ) orElse (
+            f.split flatMap { p =>
+              val (f1, f2) = (p._1, p._2)
+              assert( f2.isCandidateForInlining , s"not a candidate for inlining: $f2" )
+              g.inline(f2)(rec) map (g1 => sequence(f1, g1))
+            }
+          )
       }))
     )
   }

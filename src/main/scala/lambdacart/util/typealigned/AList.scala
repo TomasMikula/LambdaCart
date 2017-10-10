@@ -2,8 +2,10 @@ package lambdacart.util.typealigned
 
 import scala.annotation.tailrec
 import lambdacart.util.~~>
-import scalaz.{\/, -\/, \/-, ~>, Category, Compose, Leibniz, Monoid}
+import scalaz.{@@, \/, -\/, \/-, ~>, Category, Compose, Leibniz, Monoid, Tag}
 import scalaz.Leibniz.===
+import scalaz.Tags.{Conjunction, Disjunction}
+import scalaz.std.anyVal._
 
 /**
  * A potentially empty type-aligned list.
@@ -112,6 +114,16 @@ sealed abstract class AList[F[_, _], A, B] {
 
   def sum[M](φ: F ~~> λ[(α, β) => M])(implicit M: Monoid[M]): M =
     foldMap[λ[(α, β) => M]](φ)(M.category)
+
+  def all(p: F ~~> λ[(α, β) => Boolean]): Boolean = {
+    val q = Tag.subst[Boolean, λ[b => F ~~> λ[(α, β) => b]], Conjunction](p)
+    Tag.unwrap(sum[Boolean @@ Conjunction](q))
+  }
+
+  def exists(p: F ~~> λ[(α, β) => Boolean]): Boolean = {
+    val q = Tag.subst[Boolean, λ[b => F ~~> λ[(α, β) => b]], Disjunction](p)
+    Tag.unwrap(sum[Boolean @@ Disjunction](q))
+  }
 
   def size: Int = {
     @tailrec def go(acc: Int, fs: AList[F, _, _]): Int = fs match {

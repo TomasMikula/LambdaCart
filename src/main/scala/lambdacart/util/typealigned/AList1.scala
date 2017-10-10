@@ -101,6 +101,12 @@ sealed abstract class AList1[F[_, _], A, B] {
   def sum[S](φ: F ~~> λ[(α, β) => S])(implicit S: Semigroup[S]): S =
     foldMap[λ[(α, β) => S]](φ)(S.compose)
 
+  def all(p: F ~~> λ[(α, β) => Boolean]): Boolean =
+    p.apply(head) && tail.all(p)
+
+  def exists(p: F ~~> λ[(α, β) => Boolean]): Boolean =
+    p.apply(head) || tail.exists(p)
+
   def size: Int = 1 + tail.size
 
   def toList: AList[F, A, B] = head :: tail
