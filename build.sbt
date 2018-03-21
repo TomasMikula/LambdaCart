@@ -4,11 +4,11 @@ version := "0.1-SNAPSHOT"
 
 organization := "com.github.tomasmikula"
 
-scalaVersion := "2.12.3"
+scalaVersion := "2.12.4"
 
 autoCompilerPlugins := true
-addCompilerPlugin("org.spire-math" % "kind-projector" % "0.9.4" cross CrossVersion.binary)
-addCompilerPlugin("com.github.tomasmikula" % "pascal" % "0.2" cross CrossVersion.binary)
+addCompilerPlugin("org.spire-math" % "kind-projector" % "0.9.6" cross CrossVersion.binary)
+addCompilerPlugin("com.github.tomasmikula" % "pascal" % "0.2.1" cross CrossVersion.binary)
 
 scalacOptions ++= Seq(
   "-language:higherKinds",
@@ -17,6 +17,7 @@ scalacOptions ++= Seq(
   "-deprecation",
   "-feature",
 //  "-Xfatal-warnings",
+  "-Xsource:2.13",
   "-Yno-adapted-args",
   "-Ypartial-unification",
   "-Ywarn-numeric-widen",
@@ -26,9 +27,9 @@ scalacOptions ++= Seq(
   "-Xfuture")
 
 libraryDependencies ++= Seq(
-  "org.scalaz" %% "scalaz-core" % "7.3.0-M16",
+  "org.scalaz" %% "scalaz-core" % "7.3.0-M20",
 
-  "org.scalatest" %% "scalatest" % "3.0.4" % "test"
+  "org.scalatest" %% "scalatest" % "3.0.5" % "test"
 )
 
 fork := true
