@@ -21,14 +21,12 @@ sealed trait DataTerm[A] {
 
   def size: Int = visit(new Visitor[Int] {
     def apply(a: Var[A]): Int = 1
-    def apply[X](a: App[X,A]): Int = 1 + a.f.size + a.a.size
     def apply(a: Obj[A]): Int = 1 + a.f.size
   })
 
   def containsVar[V](v: Var[V]): Boolean = visit(new Visitor[Boolean] {
     def apply(a: Var[A]) = a == v
     def apply(a: Obj[A]) = a.f.containsVar(v)
-    def apply[X](a: App[X,A]) = a.f.containsVar(v) || a.a.containsVar(v)
   })
 
   /** Returns `f` such that `f(x) = this` and `x` does not occur in `f`.
@@ -37,10 +35,6 @@ sealed trait DataTerm[A] {
     def apply(a: Obj[A]) =
       if(a.f.containsVar(v)) compose(uncurry(a.f.unapply(v)), prod(id, terminal))
       else compose(a.f, terminal)
-
-    def apply[X](a: App[X,A]) =
-      if(!a.f.containsVar(v)) andThen(a.a.unapply(v), CodeTerm.code(a.f))
-      else andThen(prod(a.f.unapply(v), a.a.unapply(v)), eval[X, A])
 
     def apply(a: Var[A]) =
       sameVar(a, v) match {
@@ -51,9 +45,8 @@ sealed trait DataTerm[A] {
 
   def code: φ[Unit, A] =
     visit(new Visitor[φ[Unit, A]] {
-      def apply   (a: Obj[A])   = a.f
-      def apply   (a: Var[A])   = constVar(a)
-      def apply[X](a: App[X, A])= compose(CodeTerm.code(a.f), a.a.code)
+      def apply(a: Obj[A]) = a.f
+      def apply(a: Var[A]) = constVar(a)
     })
 
 
@@ -79,10 +72,6 @@ object DataTerm {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
   }
 
-  case class App[A, B](f: DataTerm[Hom[A, B]], a: DataTerm.Var[A]) extends DataTerm[B] {
-    def visit[R](visitor: Visitor[R]): R = visitor(this)
-  }
-
   class Var[A] private[lambdacart]() extends DataTerm[A] {
     def visit[R](visitor: Visitor[R]): R = visitor(this)
   }
@@ -92,7 +81,6 @@ object DataTerm {
     else None
 
   trait Visitor[A, R] {
-    def apply[X](a: App[X, A]): R
     def apply   (a: Obj[A])   : R
     def apply   (a: Var[A])   : R
   }
@@ -215,14 +203,11 @@ final class CodeTerm[A, B](val unwrap: FreeCCC[:⨪>:, **, Unit, Hom, A, B]) {
 
   def app(a: $[A]): $[B] =
     a.visit(new DataTerm.Visitor[A, DataTerm[B]] {
-      def apply[X](a: App[X, A]) =
-        App((CodeTerm.this compose CodeTerm.code(a.f)).data, a.a)
-
       def apply(a: Obj[A]) =
         DataTerm.obj(CodeTerm.this compose a.f)
 
       def apply(a: Var[A]) =
-        App(CodeTerm.this.data, a)
+        Obj(constVar[Unit, A](a) andThen CodeTerm.this)
     })
 
   override def toString = unwrap.toString

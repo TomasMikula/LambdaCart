@@ -122,18 +122,18 @@ class TermSizeTest extends FunSuite {
         })
       }
 
-    assert(forLoop[X].size == 66) // should not be more than 43
+    assert(forLoop[X].size == 79) // was 66, should not be more than 43
   }
 
   test("forLoop") {
-    assert(sizeOf(forLoop[X]) == 109)
+    assert(sizeOf(forLoop[X]) == 138) // was 109
   }
 
   test("plus") {
-    assert(sizeOf(plus) == 129)
+    assert(sizeOf(plus) == 158) // was 129
   }
 
   test("times") {
-    assert(sizeOf(times) == 256)
+    assert(sizeOf(times) == 314) // was 256
   }
 }
