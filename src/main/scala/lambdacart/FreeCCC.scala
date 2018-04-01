@@ -7,6 +7,8 @@ import scala.annotation.tailrec
 import scalaz.{~>, Leibniz}
 import scalaz.Leibniz.===
 import scalaz.std.anyVal._
+import scalaz.std.option._
+import scalaz.syntax.apply._
 
 sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] {
   import FreeCCC._
@@ -209,6 +211,26 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] {
         for {
           f <- reduce.rewrite[Z ** X, Y](sequence(Prod(sequence(Fst(), g), Snd()), f.f))
         } yield Curry(f).castB[B]
+    })
+
+  private[FreeCCC] def ignoresFst[A1, A2](implicit ev: A === (A1 ** A2)): Option[A2 :=>: B] =
+    visit(new OptVisitor[A2 :=>: B] {
+
+      override def apply[X](f: Snd[X, B])(implicit ev1: (X ** B) === A) =
+        Some(Id[B].castA(f.deriveLeibniz(ev1 andThen ev)))
+
+      override def apply(f: Sequence[A, B]) =
+        f.fs.head.ignoresFst[A1, A2] map { h => Sequence(h +: f.fs.tail) }
+    })
+
+  private[FreeCCC] def ignoresSnd[A1, A2](implicit ev: A === (A1 ** A2)): Option[A1 :=>: B] =
+    visit(new OptVisitor[A1 :=>: B] {
+
+      override def apply[Y](f: Fst[B, Y])(implicit ev1: (B ** Y) === A) =
+        Some(Id[B].castA(f.deriveLeibniz(ev1 andThen ev)))
+
+      override def apply(f: Sequence[A, B]) =
+        f.fs.head.ignoresSnd[A1, A2] map { h => Sequence(h +: f.fs.tail) }
     })
 }
 
@@ -540,42 +562,17 @@ object FreeCCC {
           override def apply(f: Id[X])(implicit ev: X === Y) = Some(g.castA(ev.flip))
 
           override def apply[P, Q](p: Prod[X, P, Q])(implicit ev: (P ** Q) === Y) =
+            g.ignoresFst[P, Q](ev.flip).map(h => h compose p.g) orElse
+            g.ignoresSnd[P, Q](ev.flip).map(h => h compose p.f) orElse
             g.visit(new g.OptVisitor[X :=>: Z] {
 
-              // reduce `prod(f, g) >>> fst` to `f`
-              override def apply[U](fst: Fst[Z, U])(implicit ev1: (Z ** U) === Y) =
-                Some(p.cast(ev1.flip.compose(ev)).f)
-
-              // reduce `prod(f, g) >>> snd` to `g`
-              override def apply[U](snd: Snd[U, Z])(implicit ev1: (U ** Z) === Y) =
-                Some(p.cast(ev1.flip.compose(ev)).g)
-
               override def apply[R, S](rs: Prod[Y, R, S])(implicit ev1: (R ** S) === Z) = {
-                val rSeq = rs.f.asSequence.fs
-                val (rh, rt) = (rSeq.head, rSeq.tail)
-                val sSeq = rs.g.asSequence.fs
-                val (sh, st) = (sSeq.head, sSeq.tail)
-
-                rh.visit(new rh.OptVisitor[X :=>: Z] {
-                  // reduce `prod(f1, f2) >>> prod(fst >>> g1, snd >>> g2)` to `prod(f1 >>> g1, f2 >>> g2)`
-                  override def apply[U](rh: Fst[rSeq.A1, U])(implicit ev2: (rSeq.A1 ** U) === Y) =
-                    sh.visit(new sh.OptVisitor[X :=>: Z] {
-                      override def apply[V](sh: Snd[V, sSeq.A1])(implicit ev3: (V ** sSeq.A1) === Y) = {
-                        val ev4: rSeq.A1 === P = rh.deriveLeibniz(ev.flip.compose(ev2))
-                        val ev5: sSeq.A1 === Q = sh.deriveLeibniz(ev.flip.compose(ev3))
-                        Some(prod(Sequence(p.f.castB(ev4.flip) +: rt), Sequence(p.g.castB(ev5.flip) +: st)).castB[Z])
-                      }
-                    })
-                  // reduce `prod(f1, f2) >>> prod(snd >>> g1, fst >>> g2)` to `prod(f2 >>> g1, f1 >>> g2)`
-                  override def apply[U](rh: Snd[U, rSeq.A1])(implicit ev2: (U ** rSeq.A1) === Y) =
-                    sh.visit(new sh.OptVisitor[X :=>: Z] {
-                      override def apply[V](sh: Fst[sSeq.A1, V])(implicit ev3: (sSeq.A1 ** V) === Y) = {
-                        val ev4: rSeq.A1 === Q = rh.deriveLeibniz(ev.flip.compose(ev2))
-                        val ev5: sSeq.A1 === P = sh.deriveLeibniz(ev.flip.compose(ev3))
-                        Some(prod(Sequence(p.g.castB(ev4.flip) +: rt), Sequence(p.f.castB(ev5.flip) +: st)).castB[Z])
-                      }
-                    })
-                })
+                (rs.f.ignoresSnd[P, Q](ev.flip) |@| rs.g.ignoresFst[P, Q](ev.flip))(
+                  (pr, qs) => Prod(pr compose p.f, qs compose p.g).castB
+                ) orElse
+                (rs.f.ignoresFst[P, Q](ev.flip) |@| rs.g.ignoresSnd[P, Q](ev.flip))(
+                  (qr, ps) => Prod(qr compose p.g, ps compose p.f).castB
+                )
               }
 
               // rewrite `prod(curry(f), g) >>> uncurry(id)` to `prod(id, g) >>> f`
