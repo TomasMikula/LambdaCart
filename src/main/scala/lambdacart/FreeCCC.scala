@@ -219,6 +219,12 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] {
       override def apply[X](f: Snd[X, B])(implicit ev1: (X ** B) === A) =
         Some(Id[B].castA(f.deriveLeibniz(ev1 andThen ev)))
 
+      override def apply(f: Terminal[A])(implicit ev: T === B) =
+        Some(Terminal[A2].castB)
+
+      override def apply[X, Y](p: Prod[A, X, Y])(implicit ev1: (X ** Y) === B) =
+        (p.f.ignoresFst[A1, A2] |@| p.g.ignoresFst[A1, A2])(Prod(_, _).castB)
+
       override def apply(f: Sequence[A, B]) =
         f.fs.head.ignoresFst[A1, A2] map { h => Sequence(h +: f.fs.tail) }
     })
@@ -228,6 +234,12 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] {
 
       override def apply[Y](f: Fst[B, Y])(implicit ev1: (B ** Y) === A) =
         Some(Id[B].castA(f.deriveLeibniz(ev1 andThen ev)))
+
+      override def apply(f: Terminal[A])(implicit ev: T === B) =
+        Some(Terminal[A1].castB)
+
+      override def apply[X, Y](p: Prod[A, X, Y])(implicit ev1: (X ** Y) === B) =
+        (p.f.ignoresSnd[A1, A2] |@| p.g.ignoresSnd[A1, A2])(Prod(_, _).castB)
 
       override def apply(f: Sequence[A, B]) =
         f.fs.head.ignoresSnd[A1, A2] map { h => Sequence(h +: f.fs.tail) }
