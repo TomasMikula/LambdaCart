@@ -170,15 +170,20 @@ final class CodeTerm[A, B](val unwrap: FreeCCC[:⨪>:, **, Unit, Hom, A, B]) {
       else                 const[V]
 
     def caseProd[Y, Z](f: φ[A, Y], g: φ[A, Z])(implicit ev: (Y**Z) === B) =
-      if(f.containsVar(v) || g.containsVar(v)) curry(uncurry(f.unapply(v)) prod uncurry(g.unapply(v))).castB(ev.lift[Hom[A, ?]])
+      if(f.containsVar(v) && g.containsVar(v)) curry((uncurry(f.unapply(v)) prod uncurry(g.unapply(v))).castB)
+      else if (f.containsVar(v))               curry((uncurry(f.unapply(v)) prod g.compose(snd)).castB)
+      else if (g.containsVar(v))               curry((f.compose(snd[V, A]) prod uncurry(g.unapply(v))).castB)
       else                                     const[V]
 
     def caseCompose[Y](f: φ[Y, B], g: φ[A, Y]) =
-      if(f.containsVar(v) || g.containsVar(v)) {
-        val h1: φ[V**A, Hom[V, B]] = swap(f.unapply(v)) compose uncurry(g.unapply(v))
-        val h2: φ[(V**V)**A, B] = flip(uncurry(h1)) compose assocR[V, V, A]
-        val diag1: φ[V**A, (V**V)**A] = parallel(diag[V], id)
-        curry(h2 compose diag1)
+      if(f.containsVar(v) && g.containsVar(v)) {
+        val f1: φ[V, Hom[Y, B]] = f.unapply(v)
+        val g1: φ[V, Hom[A, Y]] = g.unapply(v)
+        curry(((f1 compose fst[V, A]) prod uncurry(g1)) andThen eval)
+      } else if(f.containsVar(v)) {
+        curry(parallel(f.unapply(v), g) andThen eval)
+      } else if(g.containsVar(v)) {
+        curry(uncurry(g.unapply(v)) andThen f)
       } else {
         const[V]
       }
@@ -186,7 +191,7 @@ final class CodeTerm[A, B](val unwrap: FreeCCC[:⨪>:, **, Unit, Hom, A, B]) {
     def caseConstVar(q: Var[B]) =
       sameVar(q, v) match {
         case Some(ev) => constA[B, A].castA[V](ev)
-        case None     => constVar[A, B](q).const[V]
+        case None     => curry(constVar[V**A, B](q))
       }
   })
 

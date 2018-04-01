@@ -109,7 +109,7 @@ class TermSizeTest extends FunSuite {
     val times: φ[Nat, Nat ->: Nat] =
       φ[Nat, Nat, Nat]((a, b) => forLoop(a)(zero)(plus(b)))
 
-    assert(times.size == 18)
+    assert(times.size == 17)
   }
 
   test("forLoop, relative to doWhile") {
@@ -122,18 +122,18 @@ class TermSizeTest extends FunSuite {
         })
       }
 
-    assert(forLoop[X].size == 79) // was 66, should not be more than 43
+    assert(forLoop[X].size == 70) // was 66, should not be more than 43
   }
 
   test("forLoop") {
-    assert(sizeOf(forLoop[X]) == 138) // was 109
+    assert(sizeOf(forLoop[X]) == 120) // was 109
   }
 
   test("plus") {
-    assert(sizeOf(plus) == 158) // was 129
+    assert(sizeOf(plus) == 140) // was 129
   }
 
   test("times") {
-    assert(sizeOf(times) == 314) // was 256
+    assert(sizeOf(times) == 278) // was 256
   }
 }
