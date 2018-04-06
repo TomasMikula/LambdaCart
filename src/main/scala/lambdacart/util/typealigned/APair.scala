@@ -15,6 +15,8 @@ sealed abstract class BoundedAPair[U, F[_ <: U], G[_ <: U]] {
   type A <: U
   val _1: F[A]
   val _2: G[A]
+
+  def swap: BoundedAPair[U, G, F] = BoundedAPair(_2, _1)
 }
 
 object BoundedAPair {
@@ -27,8 +29,29 @@ object BoundedAPair {
   /** Defer specifying `A`, so that it could possibly be inferred. */
   def of[U, F[_ <: U], G[_ <: U]]: Builder[U, F, G] = new Builder[U, F, G]
 
-  class Builder[U, F[_ <: U], G[_ <: U]] {
+  class Builder[U, F[_ <: U], G[_ <: U]] private[BoundedAPair] {
     def apply[A <: U](fa: F[A], ga: G[A]): BoundedAPair[U, F, G] =
       BoundedAPair[U, F, G, A](fa, ga)
+  }
+}
+
+sealed abstract class A2Pair[F[_,_], G[_,_]] {
+  type A
+  type B
+  val _1: F[A, B]
+  val _2: G[A, B]
+
+  def swap: A2Pair[G, F] = A2Pair(_2, _1)
+}
+
+object A2Pair {
+  def apply[F[_,_], G[_,_], X, Y](f: F[X,Y], g: G[X,Y]): A2Pair[F, G] =
+    new A2Pair[F, G] { type A = X; type B = Y; val _1 = f; val _2 = g }
+
+  def of[F[_,_], G[_,_]]: Builder[F, G] = new Builder[F, G]
+
+  class Builder[F[_,_], G[_,_]] private[A2Pair] {
+    def apply[A, B](f: F[A, B], g: G[A, B]): A2Pair[F, G] =
+      A2Pair(f, g)
   }
 }

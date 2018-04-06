@@ -21,5 +21,12 @@ package object util {
 
   implicit class LeibnizOps[X, Y](ev: X === Y) {
     def lift[F[_]]: F[X] === F[Y] = ev.subst[λ[α => F[X] === F[α]]](Leibniz.refl)
+    def lift2[F[_,_]]: Lift2[F] = Lift2()
+
+    case class Lift2[F[_,_]]() {
+      def apply[A, B](implicit ev1: A === B): F[X, A] === F[Y, B] =
+        ev.subst[λ[x => F[X, A] === F[x, B]]](
+          ev1.subst[λ[a => F[X, A] === F[X, a]]](Leibniz.refl))
+    }
   }
 }

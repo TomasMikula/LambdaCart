@@ -26,6 +26,10 @@ trait CCC[:=>:[_, _]] extends Category[:=>:] {
   // closed
   def curry[A, B, C](f: (A ** B) :=>: C): A :=>: Hom[B, C]
   def uncurry[A, B, C](f: A :=>: Hom[B, C]): (A ** B) :=>: C
+
+  // derived methods
+  def andThen[A, B, C](f: A :=>: B, g: B :=>: C): A :=>: C = compose(g, f)
+  def const[A, B, C](f: B :=>: C): A :=>: Hom[B, C] = curry(andThen(snd[A, B], f))
 }
 
 object CCC {

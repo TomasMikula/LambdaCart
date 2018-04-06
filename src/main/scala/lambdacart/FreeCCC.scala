@@ -2,7 +2,7 @@ package lambdacart
 
 import lambdacart.util.~~>
 import lambdacart.util.LeibnizOps
-import lambdacart.util.typealigned.{ACons, AList, AList1, ANil, APair, LeftAction}
+import lambdacart.util.typealigned.{ACons, AList, AList1, ANil, APair, A2Pair, LeftAction, RightAction}
 import scala.annotation.tailrec
 import scalaz.{~>, Leibniz}
 import scalaz.Leibniz.===
@@ -10,7 +10,7 @@ import scalaz.std.anyVal._
 import scalaz.std.option._
 import scalaz.syntax.apply._
 
-sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] {
+sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
   import FreeCCC._
 
   type :=>:[α, β] = FreeCCC[:->:, **, T, H, α, β]
@@ -22,6 +22,8 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] {
   type RewriteRule = FreeCCC.RewriteRule[:->:, **, T, H]
   type ClosedRewriteRule = FreeCCC.ClosedRewriteRule[:->:, **, T, H]
 
+  type Prj[X, Y] = FreeCCC.Prj[**, T, X, Y]
+
   /** Workaround for Scala's broken GADT pattern matching. */
   def visit[R](v: Visitor[R]): R
 
@@ -32,7 +34,10 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] {
     ev.subst[FreeCCC[:->:, **, T, H, A, ?]](this)
 
   def const[Z]: FreeCCC[:->:, **, T, H, Z, H[A, B]] =
-    (this compose snd[:->:, **, T, H, Z, A]).curry
+    FreeCCC.curry(this.compose(FreeCCC.snd))
+
+  def const1: FreeCCC[:->:, **, T, H, T, H[A, B]] =
+    FreeCCC.const(this)
 
   def prod[C](that: FreeCCC[:->:, **, T, H, A, C]): FreeCCC[:->:, **, T, H, A, B ** C] =
     FreeCCC.prod(this, that)
@@ -49,6 +54,9 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] {
   def curry[X, Y](implicit ev: A === (X ** Y)): FreeCCC[:->:, **, T, H, X, H[Y, B]] =
     FreeCCC.curry(this.castA(ev))
 
+  def curry0[X, Y](implicit ev: A === (X ** Y)): FreeCCC[:->:, **, T, H, X, H[Y, B]] =
+    FreeCCC.curry0(this.castA(ev))
+
   def uncurry[X, Y](implicit ev: B === H[X, Y]): FreeCCC[:->:, **, T, H, A**X, Y] =
     FreeCCC.uncurry(this.castB(ev))
 
@@ -64,15 +72,16 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] {
 
   final def foldMap[->[_, _]](φ: :->: ~~> ->)(implicit ccc: CCC.Aux[->, **, T, H]): A -> B =
     visit[A -> B](new Visitor[A -> B] {
-      def apply      (f:     Lift[A, B]   ) = φ[A, B](f.f)
-      def apply      (f: Sequence[A, B]   ) = f.fs.foldMap(ν[:=>: ~~> ->][α, β](_.foldMap(φ)))
-      def apply      (f:       Id[A]      )(implicit ev:        A === B) = ev.lift[A -> ?](ccc.id[A])
-      def apply[X]   (f:      Fst[B, X]   )(implicit ev: (B ** X) === A) = ev.lift[? -> B](ccc.fst[B, X])
-      def apply[X]   (f:      Snd[X, B]   )(implicit ev: (X ** B) === A) = ev.lift[? -> B](ccc.snd[X, B])
-      def apply      (f: Terminal[A]      )(implicit ev:        T === B) = ev.lift[A -> ?](ccc.terminal[A])
-      def apply[X, Y](f:     Prod[A, X, Y])(implicit ev: (X ** Y) === B) = ev.lift[A -> ?](ccc.prod(f.f.foldMap(φ), f.g.foldMap(φ)))
-      def apply[X, Y](f:    Curry[A, X, Y])(implicit ev:  H[X, Y] === B) = ev.lift[A -> ?](ccc.curry(f.f.foldMap(φ)))
-      def apply[X, Y](f:  Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) = ev.lift[? -> B](ccc.uncurry(f.f.foldMap(φ)))
+      def apply      (f:       Lift[A, B]) = φ[A, B](f.f)
+      def apply      (f:   Sequence[A, B]) = f.fs.foldMap(ν[:=>: ~~> ->][α, β](_.foldMap(φ)))
+      def apply      (f:            Id[A])(implicit ev:        A === B) = ev.lift[A -> ?](ccc.id[A])
+      def apply[X]   (f:        Fst[B, X])(implicit ev: (B ** X) === A) = ev.lift[? -> B](ccc.fst[B, X])
+      def apply[X]   (f:        Snd[X, B])(implicit ev: (X ** B) === A) = ev.lift[? -> B](ccc.snd[X, B])
+      def apply      (f:      Terminal[A])(implicit ev:        T === B) = ev.lift[A -> ?](ccc.terminal[A])
+      def apply[X, Y](f:    Prod[A, X, Y])(implicit ev: (X ** Y) === B) = ev.lift[A -> ?](ccc.prod(f.f.foldMap(φ), f.g.foldMap(φ)))
+      def apply[X, Y](f:   Curry[A, X, Y])(implicit ev:  H[X, Y] === B) = ev.lift[A -> ?](ccc.curry(f.f.foldMap(φ)))
+      def apply[X, Y](f: Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) = ev.lift[? -> B](ccc.uncurry(f.f.foldMap(φ)))
+      def apply[X, Y](f: Const[X, Y])(implicit ev1: A === T, ev2: H[X, Y] === B) = ev1.flip.lift[? -> B](ev2.lift[T -> ?](ccc.const(f.f.foldMap(φ))))
     })
 
   final def fold(implicit ccc: CCC.Aux[:->:, **, T, H]): A :->: B =
@@ -82,7 +91,8 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] {
     foldMap(Λ[X, Y](f => lift(φ[X, Y](f))): :->: ~~> FreeCCC[->, **, T, H, ?, ?])
 
   final def size: Int = visit(new Visitor[Int] {
-    def apply      (a: Sequence[A, B]   ) = 1 + a.fs.sum(Λ[α, β](_.size): :=>: ~~> λ[(χ, υ) => Int])
+    def apply      (a:    Sequence[A, B]) = 1 + a.fs.sum(Λ[α, β](_.size): :=>: ~~> λ[(χ, υ) => Int])
+    def apply[X, Y](a:       Const[X, Y])(implicit ev1: A === T, ev2: H[X, Y] === B) = 1 + a.f.size
     def apply[Y, Z](a:    Curry[A, Y, Z])(implicit ev:  H[Y, Z] === B) = 1 + a.f.size
     def apply[X, Y](a:  Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) = 1 + a.f.size
     def apply[Y, Z](a:     Prod[A, Y, Z])(implicit ev:   (Y**Z) === B) = 1 + a.f.size + a.g.size
@@ -93,18 +103,40 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] {
     def apply      (a:     Lift[A, B])                                 = 1
   })
 
+  final def depth: Int = visit(new Visitor[Int] {
+    def apply(a: Sequence[A, B]) = {
+      type ConstInt[X] = Int
+      1 + a.fs.foldLeft[ConstInt](0)(ν[RightAction[ConstInt, :=>:]][α, β]((m: ConstInt[α], f: α :=>: β) => math.max(m, f.depth)))
+    }
+    def apply[X, Y](a:       Const[X, Y])(implicit ev1: A === T, ev2: H[X, Y] === B) = 1 + a.f.depth
+    def apply[Y, Z](a:    Curry[A, Y, Z])(implicit ev:  H[Y, Z] === B) = 1 + a.f.depth
+    def apply[X, Y](a:  Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) = 1 + a.f.depth
+    def apply[Y, Z](a:     Prod[A, Y, Z])(implicit ev:   (Y**Z) === B) = 1 + math.max(a.f.depth, a.g.depth)
+    def apply[Y]   (a:      Fst[B, Y])   (implicit ev:   (B**Y) === A) = 1
+    def apply[X]   (a:      Snd[X, B])   (implicit ev:   (X**B) === A) = 1
+    def apply      (a:       Id[A])      (implicit ev:        A === B) = 1
+    def apply      (a: Terminal[A])      (implicit ev:        T === B) = 1
+    def apply      (a:     Lift[A, B])                                 = 1
+  })
+
   /** Returns `true` iff this `FreeCCC` instance doesn't contain any instances of `:->:`. */
   final def isPure: Boolean = visit(new Visitor[Boolean] {
-    def apply      (a: Sequence[A, B]   ) = a.fs.all(Λ[α, β](_.isPure): :=>: ~~> λ[(χ, υ) => Boolean])
+    def apply      (a:    Sequence[A, B]) = a.fs.all(Λ[α, β](_.isPure): :=>: ~~> λ[(χ, υ) => Boolean])
+    def apply[X, Y](a:       Const[X, Y])(implicit ev1: A === T, ev2:  H[X, Y] === B) = a.f.isPure
     def apply[Y, Z](a:    Curry[A, Y, Z])(implicit ev:  H[Y, Z] === B) = a.f.isPure
     def apply[X, Y](a:  Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) = a.f.isPure
     def apply[Y, Z](a:     Prod[A, Y, Z])(implicit ev:   (Y**Z) === B) = a.f.isPure && a.g.isPure
-    def apply[Y]   (a:      Fst[B, Y])   (implicit ev:   (B**Y) === A) = true
-    def apply[X]   (a:      Snd[X, B])   (implicit ev:   (X**B) === A) = true
-    def apply      (a:       Id[A])      (implicit ev:        A === B) = true
-    def apply      (a: Terminal[A])      (implicit ev:        T === B) = true
-    def apply      (a:     Lift[A, B])                                 = false
+    def apply[Y]   (a:         Fst[B, Y])(implicit ev:   (B**Y) === A) = true
+    def apply[X]   (a:         Snd[X, B])(implicit ev:   (X**B) === A) = true
+    def apply      (a:             Id[A])(implicit ev:        A === B) = true
+    def apply      (a:       Terminal[A])(implicit ev:        T === B) = true
+    def apply      (a:        Lift[A, B])                              = false
   })
+
+  private implicit class ProductLeibnizOps[X1, X2, Y1, Y2](ev: (X1 ** X2) === (Y1 ** Y2)) {
+    def fst: X1 === Y1 = Leibniz.force[Nothing, Any, X1, Y1]
+    def snd: X2 === Y2 = Leibniz.force[Nothing, Any, X2, Y2]
+  }
 
   private def optimize(rules: RewriteRule): FreeCCC[:->:, **, T, H, A, B] = {
     val rr = ν[ClosedRewriteRule].rewrite[X, Y](self =
@@ -155,6 +187,9 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] {
 
       def apply[X, Y](f: Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) =
         Uncurry(φ.apply(f.f)).castA[A]
+
+      def apply[X, Y](f: Const[X, Y])(implicit ev1: A === T, ev2: H[X, Y] === B) =
+        Const(φ.apply(f.f)).castB[B].castA(ev1.flip)
     })
 
   private[FreeCCC] def split: Option[APair[A :=>: ?, ? :=>: B]] = visit(new OptVisitor[APair[A :=>: ?, ? :=>: B]] {
@@ -244,6 +279,254 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] {
       override def apply(f: Sequence[A, B]) =
         f.fs.head.ignoresSnd[A1, A2] map { h => Sequence(h +: f.fs.tail) }
     })
+
+  def isId: Option[A === B] =
+    visit(new OptVisitor[A === B] {
+      override def apply(f: Id[A])(implicit ev: A === B) = Some(ev)
+    })
+
+  private[FreeCCC] def stripLeadingProjection: APair[Prj[A, ?], ? :=>: B] =
+    visit(new Visitor[APair[Prj[A, ?], ? :=>: B]] {
+      def pair[X](p: Prj[A, X], f: X :=>: B): APair[Prj[A, ?], ? :=>: B] =
+        APair[Prj[A, ?], ? :=>: B, X](p, f)
+
+      override def apply(f: Lift[A, B]) =
+        pair(Prj.Id(), f)
+
+      override def apply(f: Id[A])(implicit ev: A === B) =
+        pair(Prj.Id(), f.castB)
+
+      override def apply[X](f: Fst[B, X])(implicit ev: (B ** X) === A) =
+        pair(Prj.Fst[**, T, B, X].castA, Id[B])
+
+      override def apply[X](f: Snd[X, B])(implicit ev: (X ** B) === A) =
+        pair(Prj.Snd[**, T, X, B].castA, Id[B])
+
+      override def apply(f: Terminal[A])(implicit ev: T === B) =
+        pair(Prj.Unit(), Id[T].castB)
+
+      override def apply[X, Y](f: Prod[A, X, Y])(implicit ev: (X ** Y) === B) = {
+        val r1 = f.f.stripLeadingProjection
+        val r2 = f.g.stripLeadingProjection
+        val r = r1._1 gcd r2._1
+        pair(r._1, Prod(r1._2.afterPrj(r._2._1), r2._2.afterPrj(r._2._2)).castB)
+      }
+
+      override def apply(f: Sequence[A, B]) = {
+        val h = f.fs.head.stripLeadingProjection
+        h._2.isId match {
+          case None => pair(h._1, Sequence(h._2 +: f.fs.tail))
+          case Some(ev) => f.fs.tail match {
+            case ACons(hd, tl) =>
+              val t = Sequence(hd +: tl).stripLeadingProjection
+              pair(h._1.castB(ev) andThen t._1, t._2)
+            case ev1 @ ANil() =>
+              pair(h._1, h._2.castB(ev1.leibniz))
+          }
+        }
+      }
+
+      override def apply[X, Y](f: Curry[A, X, Y])(implicit ev: H[X, Y] === B) = {
+        val pg = f.f.stripLeadingProjection
+        val (p, g) = (pg._1, pg._2)
+        val q12q = p.split[A, X]
+        val ((q1, q2), q) = (q12q._1, q12q._2)
+        val gcd = q gcd Prj.Snd()
+        val (r0, (r1, _)) = (gcd._1, gcd._2)
+        r0.isSnd[q12q.A, q12q.B] match {
+          case Some(ev1) => pair(Prj.Unit(), g.afterPrj(q2 andThen r1.castA(ev1)).const1.castB)
+          case None => pair(q1, g.afterPrj(Prj.par[**, T, q12q.A, X, q12q.A, q12q.B](Prj.Id(), q2) andThen q).curry0[q12q.A, X].castB)
+        }
+      }
+      override def apply[X, Y](f: Uncurry[X, Y, B])(implicit e1: (X ** Y) === A) =
+        pair(Prj.Id(), FreeCCC.this)
+
+      override def apply[X, Y](f: Const[X, Y])(implicit ev1: A === T, ev2: H[X, Y] === B) =
+        pair(Prj.Id(), FreeCCC.this)
+    })
+
+  private[FreeCCC] def restrictResultTo[B0](p: Prj[B, B0]): Option[APair[Prj[A, ?], ? :=>: B0]] =
+    visit(new Visitor[Option[APair[Prj[A, ?], ? :=>: B0]]] { v =>
+      private def pair[A0](prj: Prj[A, A0], f: A0 :=>: B0): Option[APair[Prj[A, ?], ? :=>: B0]] =
+        Some(APair.of[Prj[A, ?], ? :=>: B0](prj, f))
+
+      def apply(f: Lift[A, B]) =
+        p.isUnit match {
+          case Some(ev) => pair[T](Prj.Unit(), Terminal[T].castB(ev.flip))
+          case None     => None
+        }
+
+      def apply(f: Id[A])(implicit ev: A === B) = p.isId match {
+        case Some(_) => None
+        case None => pair(p.castA(ev.flip), Id[B0])
+      }
+
+      def apply(f: Terminal[A])(implicit ev: T === B) = pair(Prj.Unit(), p.toFreeCCC.castA(ev.flip))
+      def apply[X](f: Fst[B, X])(implicit ev: (B ** X) === A) = pair(p.after(Prj.Fst[**, T, B, X].castA), Id[B0])
+      def apply[X](f: Snd[X, B])(implicit ev: (X ** B) === A) = pair(p.after(Prj.Snd[**, T, X, B].castA), Id[B0])
+
+      def apply(f: Sequence[A, B]) = f.fs.tail match {
+        case ACons(fh, ft) =>
+          val tail = Sequence(fh +: ft)
+          val tpf = tail.stripLeadingProjection
+          val (tp, tf) = (tpf._1, tpf._2)
+          tf.restrictResultTo(p) match {
+            case Some(qg) =>
+              val (q, g) = (qg._1, qg._2)
+              f.fs.head.restrictResultTo(tp andThen q) match {
+                case Some(rh) =>
+                  val (r, h) = (rh._1, rh._2)
+                  pair(r, h andThen g)
+                case None =>
+                  pair(Prj.Id(), f.fs.head andThenPrj (tp andThen q) andThen g)
+              }
+            case None =>
+              f.fs.head.restrictResultTo(Prj.Id()) match {
+                case Some(rh) =>
+                  val (r, h) = (rh._1, rh._2)
+                  pair(r, h andThen tail andThenPrj p)
+                case None =>
+                  None
+              }
+          }
+        case ev @ ANil() =>
+          f.fs.head.castB(ev.leibniz).restrictResultTo(p)
+      }
+
+      def apply[X, Y](f: Prod[A, X, Y])(implicit ev: (X ** Y) === B) =
+        p.visit(new p.Visitor[Option[APair[Prj[A, ?], ? :=>: B0]]] {
+          def apply[Z](p: Fst[B0, Z])(implicit ev1: B === (B0 ** Z)) = {
+            implicit val xb0: X === B0 = p.deriveLeibniz(ev.andThen(ev1).flip).flip
+            val f1 = f.f.castB[B0]
+            f1.restrictResultTo(Id[B0]).orElse(pair(Prj.Id(), f1))
+          }
+          def apply[Z](p: Snd[Z, B0])(implicit ev1: B === (Z ** B0)) = {
+            implicit val yb0: Y === B0 = p.deriveLeibniz(ev.andThen(ev1).flip).flip
+            val f2 = f.g.castB[B0]
+            f2.restrictResultTo(Id[B0]).orElse(pair(Prj.Id(), f2))
+          }
+          def apply[B1, B2, B01, B02](p: Par[B1, B2, B01, B02])(implicit ev1: B === (B1 ** B2), ev2: (B01 ** B02) === B0) = {
+            // Strip leading projections first,
+            val f1p = f.f.stripLeadingProjection
+            val f2p = f.g.stripLeadingProjection
+            // so that when any of these two return Some, we know it is true improvement.
+            val qg1 = f1p._2.restrictResultTo(p.p1.castA(ev.andThen(ev1).flip.fst))
+            val qg2 = f2p._2.restrictResultTo(p.p2.castA(ev.andThen(ev1).flip.snd))
+            (qg1, qg2) match {
+              case (Some(qg1), Some(qg2)) =>
+                val (q1, g1) = (qg1._1, qg1._2)
+                val (q2, g2) = (qg2._1, qg2._2)
+                val gcd = (q1 after f1p._1) gcd (q2 after f2p._1)
+                val (q, r1, r2) = (gcd._1, gcd._2._1, gcd._2._2)
+                pair(q, Prod(g1.afterPrj(r1), g2.afterPrj(r2)).castB)
+              case (Some(qg1), None) =>
+                val (q1, g1) = (qg1._1, qg1._2)
+                val gcd = (q1 after f1p._1) gcd f2p._1
+                val (q, r1, r2) = (gcd._1, gcd._2._1, gcd._2._2)
+                val f2 = f2p._2.andThenPrj(p.p2.castA[Y](ev.andThen(ev1).snd.flip))
+                pair(q, Prod(g1.afterPrj(r1), f2.afterPrj(r2)).castB)
+              case (None, Some(qg2)) =>
+                val (q2, g2) = (qg2._1, qg2._2)
+                val gcd = f1p._1 gcd (q2 after f2p._1)
+                val (q, r1, r2) = (gcd._1, gcd._2._1, gcd._2._2)
+                val f1 = f1p._2.andThenPrj(p.p1.castA[X](ev.andThen(ev1).fst.flip))
+                pair(q, Prod(f1.afterPrj(r1), g2.afterPrj(r2)).castB)
+              case (None, None) =>
+                // there may still be improvement if the original leading projections
+                // have non-trivial common prefix
+                val gcd = f1p._1 gcd f2p._1
+                val (q, r1, r2) = (gcd._1, gcd._2._1, gcd._2._2)
+                q.isId match {
+                  case Some(_) =>
+                    None
+                  case None =>
+                    val f1 = f1p._2.andThenPrj(p.p1.castA[X](ev.andThen(ev1).fst.flip))
+                    val f2 = f2p._2.andThenPrj(p.p2.castA[Y](ev.andThen(ev1).snd.flip))
+                    pair(q, Prod(f1.afterPrj(r1), f2.afterPrj(r2)).castB)
+                }
+            }
+          }
+          def apply(p: Unit[B])(implicit ev: T === B0) = pair(Unit[A], v.Id[T].castB)
+          def apply(p: Id[B])(implicit ev1: B === B0) = apply(Par(Id[X], Id[Y]))(ev.flip, ev andThen ev1)
+
+          def apply[Z](p: AndThen[B, Z, B0]) = {
+            val p12q = p.split[X, Y](ev.flip)
+            val ((p1, p2), q) = (p12q._1, p12q._2)
+            assert(q.size < p.size)
+            f.restrictResultTo(Prj.Par(p1, p2)) match {
+              case Some(p0g) =>
+                val (p0, g) = (p0g._1, p0g._2)
+                g.restrictResultTo(q) match {
+                  case Some(rh) =>
+                    val (r, h) = (rh._1, rh._2)
+                    pair(p0 andThen r, h)
+                  case None =>
+                    pair(p0, g.andThenPrj(q))
+                }
+              case None =>
+                None
+            }
+          }
+        })
+
+      def apply[X, Y](f: Curry[A, X, Y])(implicit ev: H[X, Y] === B) = p.isUnit match {
+        case Some(ev1) =>
+          pair(Prj.Unit(), Id[B0].castA(ev1))
+        case None =>
+          val p0g = f.f.stripLeadingProjection
+          val (p0, g) = (p0g._1, p0g._2)
+          // TODO: we don't yet have a way to do a projection on function type, so we just weaken to Prj.Id()
+          g.restrictResultTo(Prj.Id()) match {
+            case Some(qh) =>
+              val (q, h) = (qh._1, qh._2)
+              val q12r = (p0 andThen q).split[A, X]
+              val ((q1, q2), r) = (q12r._1, q12r._2)
+              // TODO: we are not yet exploiting potential projection from X (i.e. q2)
+              val gcd = r gcd Prj.Snd()
+              val (r0, (r1, _)) = (gcd._1, gcd._2)
+              r0.isSnd[q12r.A, q12r.B] match {
+                case Some(ev1) => pair(Prj.Unit(), h.afterPrj(q2 andThen r1.castA(ev1)).const1.andThenPrj(p.castA(ev.flip)))
+                case None => pair(q1, h.afterPrj(Prj.par[**, T, q12r.A, X, q12r.A, q12r.B](Prj.Id(), q2) andThen r).curry0[q12r.A, X].andThenPrj(p.castA(ev.flip)))
+              }
+            case None =>
+              val q12r = p0.split[A, X]
+              val ((q1, q2), r) = (q12r._1, q12r._2)
+              q1.isId match {
+                case Some(_) => None
+                case None =>
+                  // TODO: we are not yet exploiting potential projection from X (i.e. q2)
+                  val gcd = r gcd Prj.Snd()
+                  val (r0, (r1, _)) = (gcd._1, gcd._2)
+                  r0.isSnd[q12r.A, q12r.B] match {
+                    case Some(ev1) => pair(Prj.Unit(), g.afterPrj(q2 andThen r1.castA(ev1)).const1.andThenPrj(p.castA(ev.flip)))
+                    case None => pair(q1, g.afterPrj(Prj.par[**, T, q12r.A, X, q12r.A, q12r.B](Prj.Id(), q2) andThen r).curry0[q12r.A, X].andThenPrj(p.castA(ev.flip)))
+                  }
+              }
+          }
+      }
+
+      def apply[X, Y](f: Const[X, Y])(implicit ev1: A === T, ev2: H[X, Y] === B) = p.isUnit match {
+        case Some(ev3) => pair(Prj.Unit(), Id[B0].castA(ev3))
+        case None => None
+      }
+
+      def apply[X, Y](f: Uncurry[X, Y, B])(implicit e1: (X ** Y) === A) = {
+        // TODO
+        None
+      }
+    })
+
+  private[FreeCCC] def andThenPrj[B0](p: Prj[B, B0]): A :=>: B0 =
+    p.isId match {
+      case Some(ev) => this.castB(ev)
+      case None => andThen(p.toFreeCCC)
+    }
+
+  private[FreeCCC] def afterPrj[A0](p: Prj[A0, A]): A0 :=>: B =
+    p.isId match {
+      case Some(ev) => this.castA(ev.flip)
+      case None => compose(p.toFreeCCC)
+    }
 }
 
 object FreeCCC {
@@ -298,6 +581,12 @@ object FreeCCC {
       this.asInstanceOf[Uncurry[:->:, **, T, H, X, Y, C]]
   }
 
+  // Can be expressed as Curry(Snd() andThen f),
+  // but we know that Const always starts at T (the terminal object).
+  case class Const[:->:[_, _], **[_, _], T, H[_, _], A, B](f: FreeCCC[:->:, **, T, H, A, B]) extends FreeCCC[:->:, **, T, H, T, H[A, B]] {
+    def visit[R](v: Visitor[R]): R = v(this)
+  }
+
   /** Marker that the tree below this node is optimized,
     * and thus optimization will not try to rewrite it.
     */
@@ -320,6 +609,7 @@ object FreeCCC {
     type Snd[X, Y]        = FreeCCC.Snd     [:->:, **, T, H, X, Y]
     type Curry[X, Y, Z]   = FreeCCC.Curry   [:->:, **, T, H, X, Y, Z]
     type Uncurry[X, Y, Z] = FreeCCC.Uncurry [:->:, **, T, H, X, Y, Z]
+    type Const[X, Y]      = FreeCCC.Const   [:->:, **, T, H, X, Y]
 
     def Lift[X, Y](f: X :->: Y)                 : Lift[X, Y]       = FreeCCC.Lift(f)
     def Id[X]()                                 : Id[X]            = FreeCCC.Id()
@@ -329,6 +619,7 @@ object FreeCCC {
     def Snd[X, Y]()                             : Snd[X, Y]        = FreeCCC.Snd()
     def Curry[X, Y, Z](f: (X ** Y) :=>: Z)      : Curry[X, Y, Z]   = FreeCCC.Curry(f)
     def Uncurry[X, Y, Z](f: X :=>: H[Y, Z])     : Uncurry[X, Y, Z] = FreeCCC.Uncurry(f)
+    def Const[X, Y](f: X :=>: Y)                : Const[X, Y]      = FreeCCC.Const(f)
 
     def apply      (f:     Lift[A, B]   )                              : R
     def apply      (f: Sequence[A, B]   )                              : R
@@ -338,7 +629,8 @@ object FreeCCC {
     def apply[X, Y](f:     Prod[A, X, Y])(implicit ev: (X ** Y) === B) : R
     def apply      (f: Terminal[A]      )(implicit ev:        T === B) : R
     def apply[X, Y](f:    Curry[A, X, Y])(implicit ev:  H[X, Y] === B) : R
-    def apply[X, Y](f:  Uncurry[X, Y, B])(implicit e1: (X ** Y) === A) : R
+    def apply[X, Y](f:  Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) : R
+    def apply[X, Y](f:       Const[X, Y])(implicit ev1: A === T, ev2: H[X, Y] === B) : R
   }
 
   trait OptVisitor[:->:[_, _], **[_, _], T, H[_, _], A, B, R]
@@ -352,6 +644,7 @@ object FreeCCC {
     def apply      (f: Terminal[A]      )(implicit ev:        T === B) = Option.empty[R]
     def apply[X, Y](f:    Curry[A, X, Y])(implicit ev:  H[X, Y] === B) = Option.empty[R]
     def apply[X, Y](f:  Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) = Option.empty[R]
+    def apply[X, Y](f:       Const[X, Y])(implicit ev1: A === T, ev2: H[X, Y] === B) = Option.empty[R]
   }
 
   trait BinTransformer[:->:[_, _], **[_, _], T, H[_, _], A, B]
@@ -380,7 +673,7 @@ object FreeCCC {
 
   trait ClosedRewriteRule[:->:[_, _], **[_, _], T, H[_, _]]
   extends RewriteRule[:->:, **, T, H]
-     with (FreeCCC[:->:, **, T, H, ?, ?] ~~> λ[(α, β) => FreeCCC[:->:, **, T, H, α, β]]) {
+     with (FreeCCC[:->:, **, T, H, ?, ?] ~~> FreeCCC[:->:, **, T, H, ?, ?]) {
 
     def rewrite[A, B]: (A :=>: B) => Option[A :=>: B]
 
@@ -407,6 +700,279 @@ object FreeCCC {
           ν[RewriteRule[:->:, **, T, H]].rewriteRec[A, B](f => rec =>
             r.rewriteRec(f)(rec) orElse r2.rewriteRec(f)(rec)
           )
+      }
+  }
+
+  /**
+   * Represents projection from input or output type,
+   * i.e. potentially forgetting part of the input or output.
+   */
+  sealed trait Prj[**[_,_], T, A, B] {
+    type Visitor[R] = Prj.Visitor[**, T, A, B, R]
+    type OptVisitor[R] = Prj.OptVisitor[**, T, A, B, R]
+
+    def visit[R](v: Visitor[R]): R
+
+    def castA[C](implicit ev: A === C): Prj[**, T, C, B] = ev.subst[Prj[**, T, ?, B]](this)
+    def castB[C](implicit ev: B === C): Prj[**, T, A, C] = ev.subst[Prj[**, T, A, ?]](this)
+
+    def andThen[C](that: Prj[**, T, B, C]): Prj[**, T, A, C] =
+      (this.isId map {
+        ev => that.castA(ev.flip)
+      }) orElse (that.isUnit map {
+        ev => Prj.Unit[**, T, A].castB(ev.flip)
+      }) orElse (that.isId map {
+        ev => this.castB(ev)
+      }) orElse (this.visit(new this.OptVisitor[Prj[**, T, A, C]] {
+        override def apply[A1, A2, B1, B2](p: Par[A1, A2, B1, B2])(implicit
+            ev1: A === (A1 ** A2), ev2: (B1 ** B2) === B) =
+          (that.isFst[B1, B2](ev2.flip) map {
+            ev => (Fst[A1, A2] andThen p.p1).castA(ev1.flip).castB(ev.flip)
+          }) orElse (that.isSnd[B1, B2](ev2.flip) map {
+            ev => (Snd[A1, A2] andThen p.p2).castA(ev1.flip).castB(ev.flip)
+          })
+      })) getOrElse (
+        Prj.AndThen(this, that)
+      )
+
+    def after[Z](that: Prj[**, T, Z, A]): Prj[**, T, Z, B] =
+      that andThen this
+
+    def isUnit: Option[B === T] = None
+    def isId: Option[A === B] = None
+    def isFst[X, Y](implicit ev: A === (X ** Y)): Option[B === X] = None
+    def isSnd[X, Y](implicit ev: A === (X ** Y)): Option[B === Y] = None
+
+    def size: Int = visit(new Visitor[Int] {
+      def apply[Y](p: Fst[B, Y])(implicit ev: A === (B ** Y)) = 1
+      def apply[X](p: Snd[X, B])(implicit ev: A === (X ** B)) = 1
+      def apply[A1, A2, B1, B2](p: Par[A1, A2, B1, B2])(implicit ev1: A === (A1 ** A2), ev2: (B1 ** B2) === B) = 1 + p.p1.size + p.p2.size
+      def apply(p: Unit[A])(implicit ev: T === B) = 1
+      def apply(p: Id[A])(implicit ev: A === B) = 1
+      def apply[X](p: AndThen[A, X, B]) = 1 + p.p.size + p.q.size
+    })
+
+    def toFreeCCC[:=>:[_,_], :->:[_,_]]: FreeCCC[:=>:, **, T, :->:, A, B] =
+      visit(new Visitor[FreeCCC[:=>:, **, T, :->:, A, B]] {
+        def apply[Y](p: Fst[B, Y])(implicit ev: A === (B ** Y)) = FreeCCC.fst[:=>:, **, T, :->:, B, Y].castA(ev.flip)
+        def apply[X](p: Snd[X, B])(implicit ev: A === (X ** B)) = FreeCCC.snd[:=>:, **, T, :->:, X, B].castA(ev.flip)
+        def apply[A1, A2, B1, B2](p: Par[A1, A2, B1, B2])(implicit ev1: A === (A1 ** A2), ev2: (B1 ** B2) === B) =
+          FreeCCC.parallel(p.p1.toFreeCCC[:=>:, :->:], p.p2.toFreeCCC[:=>:, :->:]).castA(ev1.flip).castB
+        def apply(p: Unit[A])(implicit ev: T === B) = FreeCCC.terminal[:=>:, **, T, :->:, A].castB
+        def apply(p: Id[A])(implicit ev: A === B) = FreeCCC.id[:=>:, **, T, :->:, A].castB
+        def apply[X](p: AndThen[A, X, B]) = FreeCCC.sequence(p.p.toFreeCCC, p.q.toFreeCCC)
+      })
+
+    /**
+     * For a projection from product type, return projections from the constituents
+     * (in the first part of the returned pair) and the remaining glue (second part of the returned pair).
+     */
+    def split[A1, A2](implicit ev: A === (A1 ** A2)): A2Pair[
+                                                        λ[(x1, x2) => (Prj[**, T, A1, x1], Prj[**, T, A2, x2])],
+                                                        λ[(x1, x2) => Prj[**, T, x1 ** x2, B]] ]
+
+    /** Helper to create return value for [[#split]]. */
+    private[Prj] def splitRet[A1, A2, X1, X2](p1: Prj[**, T, A1, X1], p2: Prj[**, T, A2, X2], q: Prj[**, T, X1 ** X2, B]) =
+      A2Pair[λ[(x1, x2) => (Prj[**, T, A1, x1], Prj[**, T, A2, x2])], λ[(x1, x2) => Prj[**, T, x1 ** x2, B]], X1, X2]((p1, p2), q)
+
+    /** Greatest common prefix of this projection and that projection. */
+    def gcd[C](that: Prj[**, T, A, C]): APair[Prj[**, T, A, ?], λ[a => (Prj[**, T, a, B], Prj[**, T, a, C])]]
+
+    private[Prj] def gcdFlip[C](that: Prj[**, T, A, C]): APair[Prj[**, T, A, ?], λ[a => (Prj[**, T, a, C], Prj[**, T, a, B])]] = {
+      val x = gcd(that)
+      that.gcdRet(x._1, x._2._2, x._2._1)
+    }
+
+    /** Helper to create return value for [[#gcd]]. */
+    private[Prj] def gcdRet[X, C](p: Prj[**, T, A, X], q: Prj[**, T, X, B], r: Prj[**, T, X, C]) =
+      APair[Prj[**, T, A, ?], λ[a => (Prj[**, T, a, B], Prj[**, T, a, C])], X](p, (q, r))
+
+    /** Helper to create return value for [[#gcd]] that represents no (non-trivial) common prefix. */
+    private[Prj] def noGcd[C](that: Prj[**, T, A, C]): APair[Prj[**, T, A, ?], λ[a => (Prj[**, T, a, B], Prj[**, T, a, C])]] =
+      gcdRet(Prj.Id[**, T, A], this, that)
+
+    private[Prj] implicit class ProductLeibnizOps[X1, X2, Y1, Y2](ev: (X1 ** X2) === (Y1 ** Y2)) {
+      def fst: X1 === Y1 = Leibniz.force[Nothing, Any, X1, Y1]
+      def snd: X2 === Y2 = Leibniz.force[Nothing, Any, X2, Y2]
+    }
+  }
+
+  object Prj {
+
+    case class Fst[**[_,_], T, A, B]() extends Prj[**, T, A ** B, A] {
+      def visit[R](v: Visitor[R]): R = v(this)
+
+      def deriveLeibniz[X, Y](implicit ev: (A ** B) === (X ** Y)): A === X =
+        Leibniz.force[Nothing, Any, A, X]
+
+      override def isFst[X, Y](implicit ev: (A ** B) === (X ** Y)): Option[A === X] =
+        Some(ev.fst)
+
+      def gcd[C](that: Prj[**, T, A ** B, C]): APair[Prj[**, T, A ** B, ?], λ[a => (Prj[**, T, a, A], Prj[**, T, a, C])]] =
+        that.visit(new that.OptVisitor[APair[Prj[**, T, A ** B, ?], λ[a => (Prj[**, T, a, A], Prj[**, T, a, C])]]] {
+          override def apply[Y](p: Fst[C, Y])(implicit ev: (A ** B) === (C ** Y)) =
+            Some(gcdRet(Fst.this, Id[A], Id[A].castB(Fst.this.deriveLeibniz)))
+
+          override def apply[X](p: Snd[X, C])(implicit ev: (A ** B) === (X ** C)) =
+            Some(noGcd(that))
+        }) getOrElse (
+          that.gcdFlip(this)
+        )
+
+      def split[A1, A2](implicit ev: (A ** B) === (A1 ** A2)) =
+        splitRet[A1, A2, A1, T](Id(), Unit(), Fst[**, T, A1, T]().castB(ev.fst.flip))
+    }
+
+    case class Snd[**[_,_], T, A, B]() extends Prj[**, T, A ** B, B] {
+      def visit[R](v: Visitor[R]): R = v(this)
+
+      def deriveLeibniz[X, Y](implicit ev: (A ** B) === (X ** Y)): B === Y =
+        Leibniz.force[Nothing, Any, B, Y]
+
+      override def isSnd[X, Y](implicit ev: (A ** B) === (X ** Y)): Option[B === Y] =
+        Some(ev.snd)
+
+      def gcd[C](that: Prj[**, T, A ** B, C]): APair[Prj[**, T, A ** B, ?], λ[a => (Prj[**, T, a, B], Prj[**, T, a, C])]] =
+        that.visit(new that.OptVisitor[APair[Prj[**, T, A ** B, ?], λ[a => (Prj[**, T, a, B], Prj[**, T, a, C])]]] {
+          override def apply[Y](p: Fst[C, Y])(implicit ev: (A ** B) === (C ** Y)) =
+            Some(noGcd(that))
+
+          override def apply[X](p: Snd[X, C])(implicit ev: (A ** B) === (X ** C)) =
+            Some(gcdRet(Snd.this, Id[B], Id[B].castB(Snd.this.deriveLeibniz)))
+        }) getOrElse (
+          that.gcdFlip(this)
+        )
+
+      def split[A1, A2](implicit ev: (A ** B) === (A1 ** A2)) =
+        splitRet[A1, A2, T, A2](Unit(), Id(), Snd[**, T, T, A2]().castB(ev.snd.flip))
+    }
+
+    case class Par[**[_,_], T, A1, A2, B1, B2](p1: Prj[**, T, A1, B1], p2: Prj[**, T, A2, B2]) extends Prj[**, T, A1 ** A2, B1 ** B2] {
+      def visit[R](v: Visitor[R]): R = v(this)
+
+      def gcd[C](that: Prj[**, T, A1 ** A2, C]): APair[Prj[**, T, A1 ** A2, ?], λ[a => (Prj[**, T, a, B1 ** B2], Prj[**, T, a, C])]] =
+        that.visit(new that.OptVisitor[APair[Prj[**, T, A1 ** A2, ?], λ[a => (Prj[**, T, a, B1 ** B2], Prj[**, T, a, C])]]] {
+          override def apply[Y](p: Fst[C, Y])(implicit ev: (A1 ** A2) === (C ** Y)) = Some(noGcd(that))
+          override def apply[X](p: Snd[X, C])(implicit ev: (A1 ** A2) === (X ** C)) = Some(noGcd(that))
+          override def apply[X1, X2, Y1, Y2](p: Par[X1, X2, Y1, Y2])(implicit ev1: (A1 ** A2) === (X1 ** X2), ev2: (Y1 ** Y2) === C) = {
+            val gcd1 = p1.gcd(p.p1.castA(ev1.fst.flip))
+            val gcd2 = p2.gcd(p.p2.castA(ev1.snd.flip))
+            Some(gcdRet(par(gcd1._1, gcd2._1), par(gcd1._2._1, gcd2._2._1), par(gcd1._2._2, gcd2._2._2).castB))
+          }
+        }) getOrElse (
+          that.gcdFlip(this)
+        )
+
+      def split[X1, X2](implicit ev: (A1 ** A2) === (X1 ** X2)) =
+        splitRet(p1.castA(ev.fst), p2.castA(ev.snd), Id())
+    }
+
+    case class Unit[**[_,_], T, A]() extends Prj[**, T, A, T] {
+      def visit[R](v: Visitor[R]): R = v(this)
+
+      override def isUnit: Option[T === T] = Some(implicitly)
+
+      def gcd[C](that: Prj[**, T, A, C]): APair[Prj[**, T, A, ?], λ[a => (Prj[**, T, a, T], Prj[**, T, a, C])]] =
+        that.isUnit match {
+          case Some(ev) => gcdRet(Unit.this, Id(), Id[**, T, C].castA(ev))
+          case None     => gcdRet(that, Unit(), Id())
+        }
+
+      def split[A1, A2](implicit ev: A === (A1 ** A2)) =
+        splitRet(Unit(), Unit(), Unit[**, T, T ** T]())
+    }
+
+    case class Id[**[_,_], T, A]() extends Prj[**, T, A, A] {
+      def visit[R](v: Visitor[R]): R = v(this)
+
+      override def isId: Option[A === A] = Some(implicitly)
+
+      def gcd[C](that: Prj[**, T, A, C]): APair[Prj[**, T, A, ?], λ[a => (Prj[**, T, a, A], Prj[**, T, a, C])]] =
+        noGcd(that)
+
+      def split[A1, A2](implicit ev: A === (A1 ** A2)) =
+        splitRet(Id(), Id(), Id().castB(ev.flip))
+    }
+
+    case class AndThen[**[_,_], T, A, B, C](p: Prj[**, T, A, B], q: Prj[**, T, B, C]) extends Prj[**, T, A, C] {
+      def visit[R](v: Visitor[R]): R = v(this)
+
+      def gcd[D](that: Prj[**, T, A, D]): APair[Prj[**, T, A, ?], λ[a => (Prj[**, T, a, C], Prj[**, T, a, D])]] = {
+        val x = p.gcd(that)
+        val (ax, xb, xd) = (x._1, x._2._1, x._2._2)
+        xb.isId match {
+          case None =>
+            gcdRet(ax, xb andThen q, xd)
+          case Some(ev) =>
+            val y = q.gcd(xd.castA(ev))
+            gcdRet(ax.castB(ev) andThen y._1, y._2._1, y._2._2)
+        }
+      }
+
+      def split[A1, A2](implicit ev: A === (A1 ** A2)) =
+        p.visit(new p.Visitor[A2Pair[λ[(x1, x2) => (Prj[**, T, A1, x1], Prj[**, T, A2, x2])],
+                                     λ[(x1, x2) => Prj[**, T, x1 ** x2, C]]]] {
+          def apply[Y](p: Fst[B, Y])(implicit ev1: A === (B ** Y)) =
+            splitRet[A1, A2, C, T](q.castA(ev1.flip.andThen(ev).fst), Unit[A2], Fst[C, T])
+
+          def apply[X](p: Snd[X, B])(implicit ev1: A === (X ** B)) =
+            splitRet[A1, A2, T, C](Unit[A1], q.castA(ev1.flip.andThen(ev).snd), Snd[T, C])
+
+          def apply[X1, X2, B1, B2](p: Par[X1, X2, B1, B2])(implicit ev1: A === (X1 ** X2), ev2: (B1 ** B2) === B) = {
+            val qs = q.split[B1, B2](ev2.flip)
+            val ((q1, q2), qu) = (qs._1, qs._2)
+            val ev3: (X1 ** X2) === (A1 ** A2) = ev1.flip.andThen(ev)
+            splitRet((p.p1 andThen q1).castA(ev3.fst), (p.p2 andThen q2).castA(ev3.snd), qu)
+          }
+          def apply(p: Unit[A])(implicit ev1: T === B) =
+            splitRet(Unit[A1], Unit[A2], Unit[T ** T].castB[B] andThen q)
+
+          def apply(p: Id[A])(implicit ev1: A === B) =
+            q.castA(ev1.flip).split[A1, A2]
+
+          def apply[X](p: AndThen[A, X, B]) =
+            AndThen(p.p, AndThen(p.q, q)).split[A1, A2]
+        })
+    }
+
+    trait Visitor[**[_,_], T, A, B, R] {
+      type π[X, Y] = Prj[**, T, X, Y]
+
+      type Fst[X, Y] = Prj.Fst[**, T, X, Y]
+      type Snd[X, Y] = Prj.Snd[**, T, X, Y]
+      type Par[X1, X2, Y1, Y2] = Prj.Par[**, T, X1, X2, Y1, Y2]
+      type Unit[X] = Prj.Unit[**, T, X]
+      type Id[X] = Prj.Id[**, T, X]
+      type AndThen[X, Y, Z] = Prj.AndThen[**, T, X, Y, Z]
+
+      def Fst[X, Y]                                         : Fst[X, Y]           = Prj.Fst()
+      def Snd[X, Y]                                         : Snd[X, Y]           = Prj.Snd()
+      def Par[X1, X2, Y1, Y2](p1: π[X1, Y1], p2: π[X2, Y2]) : Par[X1, X2, Y1, Y2] = Prj.Par(p1, p2)
+      def Unit[X]                                           : Unit[X]             = Prj.Unit()
+      def Id[X]                                             : Id[X]               = Prj.Id()
+      def AndThen[X, Y, Z](p: π[X, Y], q: π[Y, Z])          : AndThen[X, Y, Z]    = Prj.AndThen(p, q)
+
+      def apply[Y](p: Fst[B, Y])(implicit ev: A === (B ** Y)): R
+      def apply[X](p: Snd[X, B])(implicit ev: A === (X ** B)): R
+      def apply[A1, A2, B1, B2](p: Par[A1, A2, B1, B2])(implicit ev1: A === (A1 ** A2), ev2: (B1 ** B2) === B): R
+      def apply(p: Unit[A])(implicit ev: T === B): R
+      def apply(p: Id[A])(implicit ev: A === B): R
+      def apply[X](p: AndThen[A, X, B]): R
+    }
+
+    trait OptVisitor[**[_,_], T, A, B, R] extends Visitor[**, T, A, B, Option[R]] {
+      def apply[Y](p: Fst[B, Y])(implicit ev: A === (B ** Y)) = Option.empty[R]
+      def apply[X](p: Snd[X, B])(implicit ev: A === (X ** B)) = Option.empty[R]
+      def apply[A1, A2, B1, B2](p: Par[A1, A2, B1, B2])(implicit ev1: A === (A1 ** A2), ev2: (B1 ** B2) === B) = Option.empty[R]
+      def apply(p: Unit[A])(implicit ev: T === B) = Option.empty[R]
+      def apply(p: Id[A])(implicit ev: A === B) = Option.empty[R]
+      def apply[X](p: AndThen[A, X, B]) = Option.empty[R]
+    }
+
+    def par[**[_,_], T, A1, A2, B1, B2](p1: Prj[**, T, A1, B1], p2: Prj[**, T, A2, B2]): Prj[**, T, A1 ** A2, B1 ** B2] =
+      (p1.isId, p2.isId) match {
+        case (Some(ev1), Some(ev2)) => Id[**, T, A1 ** A2]().castB(ev1 lift2[**] ev2)
+        case _ => Par(p1, p2)
       }
   }
 
@@ -440,7 +1006,9 @@ object FreeCCC {
   def prod[:->:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:->:, **, T, H, A, B], g: FreeCCC[:->:, **, T, H, A, C]): FreeCCC[:->:, **, T, H, A, (B**C)] = Prod(f, g).optim
   def terminal[:->:[_, _], **[_, _], T, H[_, _], A]: FreeCCC[:->:, **, T, H, A, T] = Terminal()
   def curry[:->:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:->:, **, T, H, (A**B), C]): FreeCCC[:->:, **, T, H, A, H[B, C]] = Curry(f).optim
+  def curry0[:->:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:->:, **, T, H, (A**B), C]): FreeCCC[:->:, **, T, H, A, H[B, C]] = Curry(f)
   def uncurry[:->:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:->:, **, T, H, A, H[B, C]]): FreeCCC[:->:, **, T, H, (A**B), C] = Uncurry(f).optim
+  def const[:->:[_, _], **[_, _], T, H[_, _], A, B](f: FreeCCC[:->:, **, T, H, A, B]): FreeCCC[:->:, **, T, H, T, H[A, B]] = Const(f).optim
 
 
   // derived Cartesian closed operations
@@ -504,6 +1072,28 @@ object FreeCCC {
     type ClosedRewriteRule = FreeCCC.ClosedRewriteRule[:->:, **, T, H]
 
     RewriteRule.sequence[:->:, **, T, H](
+
+      // Perform projections as soon as possible.
+      // That is, don't carry along something that will not used.
+      // Forget it as soon as possible.
+      ν[ClosedRewriteRule].rewrite[A, B](f => {
+        val pg = f.stripLeadingProjection
+        val (p, g) = (pg._1, pg._2)
+        g.restrictResultTo(Prj.Id()) map { qh =>
+          val (q, h) = (qh._1, qh._2)
+          val r = p andThen q
+          val f1 = h.afterPrj(r)
+
+          {
+            import scala.language.existentials
+            val p1 = f1.stripLeadingProjection._1
+            assert(p1 == r, s"$p1 was not equal to $r, could cause infinite rewrites")
+          }
+
+          f1
+        }
+      }),
+
       ν[ClosedRewriteRule].rewrite[A, B](f => f.visit(new BinTransformer[:->:, **, T, H, A, B] {
         override def apply   (f:     Lift[A, B])                              = None
         override def apply   (f:       Id[A]   )(implicit ev:        A === B) = None
