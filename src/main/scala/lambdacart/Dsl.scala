@@ -16,7 +16,7 @@ trait Dsl extends Terms {
   implicit def ccc: CCC.Aux[:->:, **, Unit, Hom]
 
   def φ[A, R](f: $[A] => $[R]): φ[A, R] =
-    internalize(f)
+    optimize(internalize(f))
 
   def φ[A, B, R](f: ($[A], $[B]) => $[R]): φ[A, B ->: R] =
     φ(a => φ[B, R](f(a, _)).data)

@@ -54,9 +54,6 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
   def curry[X, Y](implicit ev: A === (X ** Y)): FreeCCC[:->:, **, T, H, X, H[Y, B]] =
     FreeCCC.curry(this.castA(ev))
 
-  def curry0[X, Y](implicit ev: A === (X ** Y)): FreeCCC[:->:, **, T, H, X, H[Y, B]] =
-    FreeCCC.curry0(this.castA(ev))
-
   def uncurry[X, Y](implicit ev: B === H[X, Y]): FreeCCC[:->:, **, T, H, A**X, Y] =
     FreeCCC.uncurry(this.castB(ev))
 
@@ -159,7 +156,7 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
     rr.rewrite(this).getOrElse(this)
   }
 
-  private[FreeCCC] def optim: FreeCCC[:->:, **, T, H, A, B] =
+  private[lambdacart] def optim: FreeCCC[:->:, **, T, H, A, B] =
     optimize(genericRules)
 
   private[FreeCCC] def rmTags: FreeCCC[:->:, **, T, H, A, B] =
@@ -207,14 +204,14 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
     }
     override def apply[X, Y](p: Prod[A, X, Y])(implicit ev: (X ** Y) === B) =
       if      (p.f.isCandidateForInlining)
-        Some(APair.of[A :=>: ?, ? :=>: B](Prod(Id(), p.g), Prod[A ** Y, X, Y](sequence(Fst(), p.f), Snd()).castB[B]))
+        Some(APair.of[A :=>: ?, ? :=>: B](Prod(Id(), p.g), Prod[A ** Y, X, Y](Fst() andThen p.f, Snd()).castB[B]))
       else if (p.g.isCandidateForInlining)
-        Some(APair.of[A :=>: ?, ? :=>: B](Prod(p.f, Id()), Prod[X ** A, X, Y](Fst(), sequence(Snd(), p.g)).castB[B]))
+        Some(APair.of[A :=>: ?, ? :=>: B](Prod(p.f, Id()), Prod[X ** A, X, Y](Fst(), Snd() andThen p.g).castB[B]))
       else (p.f.split, p.g.split) match {
         case (Some(f), _) =>
-          Some(APair.of[A :=>: ?, ? :=>: B](Prod(f._1, p.g), Prod[f.A ** Y, X, Y](sequence(Fst(), f._2), Snd()).castB[B]))
+          Some(APair.of[A :=>: ?, ? :=>: B](Prod(f._1, p.g), Prod[f.A ** Y, X, Y](Fst() andThen f._2, Snd()).castB[B]))
         case (_, Some(g)) =>
-          Some(APair.of[A :=>: ?, ? :=>: B](Prod(p.f, g._1), Prod[X ** g.A, X, Y](Fst(), sequence(Snd(), g._2)).castB[B]))
+          Some(APair.of[A :=>: ?, ? :=>: B](Prod(p.f, g._1), Prod[X ** g.A, X, Y](Fst(), Snd() andThen g._2).castB[B]))
         case (None, None) =>
           None
       }
@@ -237,14 +234,14 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
       override def apply[X, Y](f: Prod[A, X, Y])(implicit ev: (X ** Y) === B) =
         (f.f.inline(g)(reduce), f.g.inline(g)(reduce)) match {
           case (Some(f1), Some(f2)) => Some(Prod(f1, f2).castB[B])
-          case (Some(f1), None    ) => Some(Prod(f1, sequence(g, f.g)).castB[B])
-          case (None    , Some(f2)) => Some(Prod(sequence(g, f.f), f2).castB[B])
+          case (Some(f1), None    ) => Some(Prod(f1, g andThen f.g).castB[B])
+          case (None    , Some(f2)) => Some(Prod(g andThen f.f, f2).castB[B])
           case _                    => None
         }
 
       override def apply[X, Y](f: Curry[A, X, Y])(implicit ev: H[X, Y] === B) =
         for {
-          f <- reduce.rewrite[Z ** X, Y](sequence(Prod(sequence(Fst(), g), Snd()), f.f))
+          f <- reduce.rewrite[Z ** X, Y](Prod(Fst[Z, X]() andThen g, Snd[Z, X]()) andThen f.f)
         } yield Curry(f).castB[B]
     })
 
@@ -335,7 +332,7 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
         val (r0, (r1, _)) = (gcd._1, gcd._2)
         r0.isSnd[q12q.A, q12q.B] match {
           case Some(ev1) => pair(Prj.Unit(), g.afterPrj(q2 andThen r1.castA(ev1)).const1.castB)
-          case None => pair(q1, g.afterPrj(Prj.par[**, T, q12q.A, X, q12q.A, q12q.B](Prj.Id(), q2) andThen q).curry0[q12q.A, X].castB)
+          case None => pair(q1, g.afterPrj(Prj.par[**, T, q12q.A, X, q12q.A, q12q.B](Prj.Id(), q2) andThen q).curry[q12q.A, X].castB)
         }
       }
       override def apply[X, Y](f: Uncurry[X, Y, B])(implicit e1: (X ** Y) === A) =
@@ -486,7 +483,7 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
               val (r0, (r1, _)) = (gcd._1, gcd._2)
               r0.isSnd[q12r.A, q12r.B] match {
                 case Some(ev1) => pair(Prj.Unit(), h.afterPrj(q2 andThen r1.castA(ev1)).const1.andThenPrj(p.castA(ev.flip)))
-                case None => pair(q1, h.afterPrj(Prj.par[**, T, q12r.A, X, q12r.A, q12r.B](Prj.Id(), q2) andThen r).curry0[q12r.A, X].andThenPrj(p.castA(ev.flip)))
+                case None => pair(q1, h.afterPrj(Prj.par[**, T, q12r.A, X, q12r.A, q12r.B](Prj.Id(), q2) andThen r).curry[q12r.A, X].andThenPrj(p.castA(ev.flip)))
               }
             case None =>
               val q12r = p0.split[A, X]
@@ -499,7 +496,7 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
                   val (r0, (r1, _)) = (gcd._1, gcd._2)
                   r0.isSnd[q12r.A, q12r.B] match {
                     case Some(ev1) => pair(Prj.Unit(), g.afterPrj(q2 andThen r1.castA(ev1)).const1.andThenPrj(p.castA(ev.flip)))
-                    case None => pair(q1, g.afterPrj(Prj.par[**, T, q12r.A, X, q12r.A, q12r.B](Prj.Id(), q2) andThen r).curry0[q12r.A, X].andThenPrj(p.castA(ev.flip)))
+                    case None => pair(q1, g.afterPrj(Prj.par[**, T, q12r.A, X, q12r.A, q12r.B](Prj.Id(), q2) andThen r).curry[q12r.A, X].andThenPrj(p.castA(ev.flip)))
                   }
               }
           }
@@ -760,7 +757,7 @@ object FreeCCC {
           FreeCCC.parallel(p.p1.toFreeCCC[:=>:, :->:], p.p2.toFreeCCC[:=>:, :->:]).castA(ev1.flip).castB
         def apply(p: Unit[A])(implicit ev: T === B) = FreeCCC.terminal[:=>:, **, T, :->:, A].castB
         def apply(p: Id[A])(implicit ev: A === B) = FreeCCC.id[:=>:, **, T, :->:, A].castB
-        def apply[X](p: AndThen[A, X, B]) = FreeCCC.sequence(p.p.toFreeCCC, p.q.toFreeCCC)
+        def apply[X](p: AndThen[A, X, B]) = FreeCCC.andThen(p.p.toFreeCCC, p.q.toFreeCCC)
       })
 
     /**
@@ -1000,15 +997,14 @@ object FreeCCC {
 
   // Cartesian closed operations
   def id[:->:[_, _], **[_, _], T, H[_, _], A]: FreeCCC[:->:, **, T, H, A, A] = Id()
-  def compose[:->:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:->:, **, T, H, B, C], g: FreeCCC[:->:, **, T, H, A, B]): FreeCCC[:->:, **, T, H, A, C] = Sequence(g :: AList1(f)).optim
+  def compose[:->:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:->:, **, T, H, B, C], g: FreeCCC[:->:, **, T, H, A, B]): FreeCCC[:->:, **, T, H, A, C] = Sequence(g :: AList1(f))
   def fst[:->:[_, _], **[_, _], T, H[_, _], A, B]: FreeCCC[:->:, **, T, H, (A**B), A] = Fst()
   def snd[:->:[_, _], **[_, _], T, H[_, _], A, B]: FreeCCC[:->:, **, T, H, (A**B), B] = Snd()
-  def prod[:->:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:->:, **, T, H, A, B], g: FreeCCC[:->:, **, T, H, A, C]): FreeCCC[:->:, **, T, H, A, (B**C)] = Prod(f, g).optim
+  def prod[:->:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:->:, **, T, H, A, B], g: FreeCCC[:->:, **, T, H, A, C]): FreeCCC[:->:, **, T, H, A, (B**C)] = Prod(f, g)
   def terminal[:->:[_, _], **[_, _], T, H[_, _], A]: FreeCCC[:->:, **, T, H, A, T] = Terminal()
-  def curry[:->:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:->:, **, T, H, (A**B), C]): FreeCCC[:->:, **, T, H, A, H[B, C]] = Curry(f).optim
-  def curry0[:->:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:->:, **, T, H, (A**B), C]): FreeCCC[:->:, **, T, H, A, H[B, C]] = Curry(f)
-  def uncurry[:->:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:->:, **, T, H, A, H[B, C]]): FreeCCC[:->:, **, T, H, (A**B), C] = Uncurry(f).optim
-  def const[:->:[_, _], **[_, _], T, H[_, _], A, B](f: FreeCCC[:->:, **, T, H, A, B]): FreeCCC[:->:, **, T, H, T, H[A, B]] = Const(f).optim
+  def curry[:->:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:->:, **, T, H, (A**B), C]): FreeCCC[:->:, **, T, H, A, H[B, C]] = Curry(f)
+  def uncurry[:->:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:->:, **, T, H, A, H[B, C]]): FreeCCC[:->:, **, T, H, (A**B), C] = Uncurry(f)
+  def const[:->:[_, _], **[_, _], T, H[_, _], A, B](f: FreeCCC[:->:, **, T, H, A, B]): FreeCCC[:->:, **, T, H, T, H[A, B]] = Const(f)
 
 
   // derived Cartesian closed operations
@@ -1030,10 +1026,6 @@ object FreeCCC {
 
   def andThen[:->:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:->:, **, T, H, A, B], g: FreeCCC[:->:, **, T, H, B, C]): FreeCCC[:->:, **, T, H, A, C] =
     compose(g, f)
-
-  /** Like [[#andThen]], but not eagerly optimizing. */
-  private[FreeCCC] def sequence[:->:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:->:, **, T, H, A, B], g: FreeCCC[:->:, **, T, H, B, C]): FreeCCC[:->:, **, T, H, A, C] =
-    Sequence(f :: AList1(g))
 
   private[FreeCCC] def sequence[:->:[_, _], **[_, _], T, H[_, _], A, B](fs: AList[FreeCCC[:->:, **, T, H, ?, ?], A, B]): FreeCCC[:->:, **, T, H, A, B] =
     fs match {
@@ -1115,7 +1107,7 @@ object FreeCCC {
           // Rewrite `f >>> curry(g)` to `curry(parallel(f, id) >>> g)`
           // Increases size, but pushes `curry` on the outside.
           override def apply[V, W](g: Curry[Y, V, W])(implicit ev: H[V, W] === Z) =
-            Some(curry(sequence(parallel(f, id[:->:, **, T, H, V]), g.f)).castB[Z])
+            Some(curry(andThen(parallel(f, id[:->:, **, T, H, V]), g.f)).castB[Z])
 
           override def apply[P, Q](g: Prod[Y, P, Q])(implicit ev: (P ** Q) === Z) = {
             val g1s = g.f.asSequence.fs
@@ -1133,7 +1125,7 @@ object FreeCCC {
                 g1hh.visit(new g1hh.OptVisitor[X :=>: Z] {
                   override def apply[U](g1hh: Snd[U, g1hs.A1])(implicit ev2: (U ** g1hs.A1) === (Y ** R)) = {
                     val ev3: g1hs.A1 === R = g1hh.deriveLeibniz(ev2)
-                    Some(Prod(sequence(Curry(sequence(Snd[X, R](), sequence(g1ht).castA(ev3))), sequence(g1t).castA(ev1.flip)), f >>> g.g).castB[Z])
+                    Some(Prod(andThen(Curry(andThen(Snd[X, R](), sequence(g1ht).castA(ev3))), sequence(g1t).castA(ev1.flip)), f >>> g.g).castB[Z])
                   }
                 })
               }
@@ -1148,7 +1140,7 @@ object FreeCCC {
                 g2hh.visit(new g2hh.OptVisitor[X :=>: Z] {
                   override def apply[U](g2hh: Snd[U, g2hs.A1])(implicit ev2: (U ** g2hs.A1) === (Y ** R)) = {
                     val ev3: g2hs.A1 === R = g2hh.deriveLeibniz(ev2)
-                    Some(Prod(f >>> g.f, sequence(Curry(sequence(Snd[X, R](), sequence(g2ht).castA(ev3))), sequence(g2t).castA(ev1.flip))).castB[Z])
+                    Some(Prod(f >>> g.f, andThen(Curry(andThen(Snd[X, R](), sequence(g2ht).castA(ev3))), sequence(g2t).castA(ev1.flip))).castB[Z])
                   }
                 })
               }
@@ -1184,7 +1176,7 @@ object FreeCCC {
                   override def apply(gf: Id[P])(implicit ev2: P === H[Q, Z]) = {
                     p.f.visit(new p.f.OptVisitor[X :=>: Z] {
                       override def apply[V, W](p1: Curry[X, V, W])(implicit ev3: H[V, W] === P) =
-                        Some(sequence(Prod(Id[X](), p.g), p1.cast(ev2 compose ev3).f))
+                        Some(andThen(Prod(Id[X](), p.g), p1.cast(ev2 compose ev3).f))
                     })
                   }
                 })
@@ -1192,8 +1184,8 @@ object FreeCCC {
             })
         })).orElse({
           // rewrite `assocL >>> assocR` and `assocR >>> assocL` to `id`
-          val assocL = Prod(Prod(Fst[Any, Any**Any](), sequence(Snd[Any, Any**Any](), Fst[Any, Any]())), sequence(Snd[Any, Any**Any](), Snd[Any, Any]()))
-          val assocR = Prod(sequence(Fst[Any**Any, Any](), Fst[Any, Any]()), Prod(sequence(Fst[Any**Any, Any](), Snd[Any, Any]()), Snd[Any**Any, Any]()))
+          val assocL = Prod(Prod(Fst[Any, Any**Any](), andThen(Snd[Any, Any**Any](), Fst[Any, Any]())), andThen(Snd[Any, Any**Any](), Snd[Any, Any]()))
+          val assocR = Prod(andThen(Fst[Any**Any, Any](), Fst[Any, Any]()), Prod(andThen(Fst[Any**Any, Any](), Snd[Any, Any]()), Snd[Any**Any, Any]()))
 
           val (f1, g1) = (f.rmTags, g.rmTags)
           if((f1.rmTags == assocL && g1.rmTags == assocR) || (f1.rmTags == assocR && g1.rmTags == assocL))
@@ -1219,7 +1211,7 @@ object FreeCCC {
             // reduce `prod(fh >>> ft, fh >>> gt)` to `fh >>> prod(ft, gt)`
             (fh termEqual gh) flatMap { (ev1: fs.A1 === gs.A1) => fh match {
               case Id() => None // prevent expanding `prod(id, id)` to `id >>> prod(id, id)`
-              case _    => Some(sequence(fh, Prod(sequence(ft), sequence(gt).castA(ev1.flip))).castB[B])
+              case _    => Some(andThen(fh, Prod(sequence(ft), sequence(gt).castA(ev1.flip))).castB[B])
             }} orElse
             //
             gh.visit(new gh.OptVisitor[A :=>: B] {
@@ -1239,7 +1231,7 @@ object FreeCCC {
                     // to `prod(fst >>> prod(fst, snd), snd) >>> prod(fst >>> fst, prod(fst >>> snd, snd) >>> gt)`
                     None
                   else
-                    Some(sequence(Prod(sequence(fh, Prod(sequence(ft), sequence(g1t).castA(ev2))), g2), Prod(Fst[X ** P, Q]() >>> Fst[X, P](), Prod(Fst[X ** P, Q]() >>> Snd[X, P](), Snd[X ** P, Q]()).castB(ev1) >>> sequence(gt)).castB(ev)))
+                    Some(andThen(Prod(andThen(fh, Prod(sequence(ft), sequence(g1t).castA(ev2))), g2), Prod(Fst[X ** P, Q]() >>> Fst[X, P](), Prod(Fst[X ** P, Q]() >>> Snd[X, P](), Snd[X ** P, Q]()).castB(ev1) >>> sequence(gt)).castB(ev)))
                 } orElse {
                 // Rewrite `prod(fh >>> ft, prod(g1, fh >>> g2t) >>> gt)`
                 // to      `prod(fh >>> prod(ft, g2t), g1) >>> prod(fst >>> fst, prod(snd, fst >>> snd) >>> gt)`,
@@ -1250,7 +1242,7 @@ object FreeCCC {
                     // to `prod(fst >>> prod(fst, snd), snd) >>> prod(fst >>> fst, prod(snd, fst >>> snd) >>> gt)`
                     None
                   else
-                    Some(sequence(Prod(sequence(fh, Prod(sequence(ft), sequence(g2t).castA(ev2))), g1), Prod(Fst[X ** Q, P]() >>> Fst[X, Q](), Prod(Snd[X ** Q, P](), Fst[X ** Q, P]() >>> Snd[X, Q]()).castB(ev1) >>> sequence(gt)).castB(ev)))
+                    Some(andThen(Prod(andThen(fh, Prod(sequence(ft), sequence(g2t).castA(ev2))), g1), Prod(Fst[X ** Q, P]() >>> Fst[X, Q](), Prod(Snd[X ** Q, P](), Fst[X ** Q, P]() >>> Snd[X, Q]()).castB(ev1) >>> sequence(gt)).castB(ev)))
                 }
                 }
               }
@@ -1273,7 +1265,7 @@ object FreeCCC {
                     // to `prod(fst >>> prod(fst, snd), snd) >>> prod(prod(fst >>> fst, snd) >>> ft, fst >>> snd)`
                     None
                   else
-                    Some(sequence(Prod(sequence(gh, Prod(sequence(f1t).castA(ev2), sequence(gt))), f2), Prod(Prod(Fst[P ** Y, Q]() >>> Fst[P, Y](), Snd[P ** Y, Q]()).castB(ev1) >>> sequence(ft), Fst[P ** Y, Q]() >>> Snd[P, Y]()).castB(ev)))
+                    Some(andThen(Prod(andThen(gh, Prod(sequence(f1t).castA(ev2), sequence(gt))), f2), Prod(Prod(Fst[P ** Y, Q]() >>> Fst[P, Y](), Snd[P ** Y, Q]()).castB(ev1) >>> sequence(ft), Fst[P ** Y, Q]() >>> Snd[P, Y]()).castB(ev)))
                 } orElse {
 
                 // Rewrite `prod(prod(f1, gh >>> f2t) >>> ft, gh >>> gt)`
@@ -1285,7 +1277,7 @@ object FreeCCC {
                     // to `prod(fst, snd >>> prod(fst, snd)) >>> prod(prod(fst, snd >>> fst) >>> ft, snd >>> snd)`
                     None
                   else
-                    Some(sequence(Prod(f1, sequence(gh, Prod(sequence(f2t).castA(ev2), sequence(gt)))), Prod(Prod(Fst[P, Q ** Y](), Snd[P, Q ** Y]() >>> Fst[Q, Y]()).castB(ev1) >>> sequence(ft), Snd[P, Q ** Y]() >>> Snd[Q, Y]()).castB(ev)))
+                    Some(andThen(Prod(f1, andThen(gh, Prod(sequence(f2t).castA(ev2), sequence(gt)))), Prod(Prod(Fst[P, Q ** Y](), Snd[P, Q ** Y]() >>> Fst[Q, Y]()).castB(ev1) >>> sequence(ft), Snd[P, Q ** Y]() >>> Snd[Q, Y]()).castB(ev)))
                 }
                 }
               }
@@ -1303,7 +1295,7 @@ object FreeCCC {
         override def apply[X, Y](f: Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) =
           f.f match {
             case Id() => None
-            case f0   => Some(sequence(Prod(sequence(Fst[X, Y](), f0), Snd[X, Y]()), Uncurry(Id[H[Y, B]]())).castA[A])
+            case f0   => Some(andThen(Prod(andThen(Fst[X, Y](), f0), Snd[X, Y]()), Uncurry(Id[H[Y, B]]())).castA[A])
           }
       })),
 
@@ -1316,7 +1308,7 @@ object FreeCCC {
             f.split flatMap { p =>
               val (f1, f2) = (p._1, p._2)
               assert( f2.isCandidateForInlining , s"not a candidate for inlining: $f2" )
-              g.inline(f2)(rec) map (g1 => sequence(f1, g1))
+              g.inline(f2)(rec) map (g1 => andThen(f1, g1))
             }
           )
       }))

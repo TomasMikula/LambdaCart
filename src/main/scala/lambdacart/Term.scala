@@ -275,6 +275,9 @@ object CodeTerm {
     f(v).unapply(v)
   }
 
+  def optimize[A, B](f: CodeTerm[A, B]): CodeTerm[A, B] =
+    wrap(f.unwrap.optim)
+
   trait Visitor[A, B, R] extends FreeCCC.Visitor[:⨪>:, **, Unit, Hom, A, B, R] {
     import FreeCCC._
 
