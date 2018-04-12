@@ -1169,14 +1169,17 @@ object FreeCCC {
                 )
               }
 
-              // rewrite `prod(curry(f), g) >>> uncurry(id)` to `prod(id, g) >>> f`
+              // rewrite `prod(e >>> curry(f), g) >>> uncurry(id)` to `prod(e, g) >>> f`
               override def apply[R, S](g: Uncurry[R, S, Z])(implicit ev1: (R ** S) === Y) = {
                 val g0: Uncurry[P, Q, Z] = g.cast(ev.flip compose ev1)
                 g0.f.visit(new g0.f.OptVisitor[X :=>: Z] {
                   override def apply(gf: Id[P])(implicit ev2: P === H[Q, Z]) = {
-                    p.f.visit(new p.f.OptVisitor[X :=>: Z] {
-                      override def apply[V, W](p1: Curry[X, V, W])(implicit ev3: H[V, W] === P) =
-                        Some(andThen(Prod(Id[X](), p.g), p1.cast(ev2 compose ev3).f))
+                    val p1 = p.f.asSequence.fs.unsnoc1
+                    val (p1init, p1last) = (p1._1, p1._2)
+                    val e = sequence(p1init)
+                    p1last.visit(new p1last.OptVisitor[X :=>: Z] {
+                      override def apply[V, W](cf: Curry[p1.A, V, W])(implicit ev3: H[V, W] === P) =
+                        Some(andThen(Prod(e, p.g), cf.cast(ev2 compose ev3).f))
                     })
                   }
                 })
