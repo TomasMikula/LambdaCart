@@ -102,7 +102,7 @@ class TermSizeTest extends FunSuite {
     val plus: φ[Nat, Nat ->: Nat] =
       φ[Nat, Nat, Nat]((a, b) => forLoop(a)(b)(inc))
 
-    assert(plus.size == 17)
+    assert(plus.size == 9)
   }
 
   test("times, relative to forLoop and plus") {
@@ -110,6 +110,42 @@ class TermSizeTest extends FunSuite {
       φ[Nat, Nat, Nat]((a, b) => forLoop(a)(zero)(plus(b)))
 
     assert(times.size == 17)
+  }
+
+  test("transformation of for-loop body to while-loop body") {
+    def trans[A]: φ[A ->: A, (A**Nat) ->: (A**Nat \/ A)] =
+      φ[A ->: A, A**Nat, A**Nat \/ A] { (f, an) =>
+        both(an) { a => n =>
+          maybe[Nat, A**Nat \/ A](dec(n)) (
+            _ => \/-(a)                  )(
+            n => -\/(f(a) ** n)          )
+        }
+      }
+
+    // hand-written
+    def trans0[A]: φ[A ->: A, (A**Nat) ->: (A**Nat \/ A)] = {
+      import CodeTerm._
+
+      val impl: φ[(A ->: A) ** (A**Nat), A**Nat \/ A] =
+        prod(
+          prod(
+            sequence(snd[A ->: A, A**Nat], snd[A, Nat], primitive(dec), primitive(maybe[Nat, A**Nat \/ A])),
+            sequence(snd[A ->: A, A**Nat], fst[A, Nat], primitive(\/-[A**Nat, A]), constA[A**Nat \/ A, Unit])
+          ) andThen eval,
+          sequence(
+            prod(fst[A ->: A, A**Nat], snd[A ->: A, A**Nat] andThen fst[A, Nat]),
+            eval[A, A],
+            curry(primitive(-\/[A**Nat, A]))
+          )
+        ) andThen eval
+
+      CodeTerm.curry(impl)
+    }
+
+    val n = trans0[X].size
+    assert(n == 30)
+    assert(trans[X].size == n + 5) // TODO: investigate why we don't get at most the hand-written size
+    //assert(trans[X] == trans0[X])
   }
 
   test("forLoop, relative to doWhile") {
@@ -122,18 +158,18 @@ class TermSizeTest extends FunSuite {
         })
       }
 
-    assert(forLoop[X].size == 70) // was 66, should not be more than 43
+    assert(forLoop[X].size == 49) // should not be more than 43
   }
 
   test("forLoop") {
-    assert(sizeOf(forLoop[X]) == 120) // was 109
+    assert(sizeOf(forLoop[X]) == 72) // TODO: what's the optimum?
   }
 
   test("plus") {
-    assert(sizeOf(plus) == 140) // was 129
+    assert(sizeOf(plus) == 84) // TODO: what's the optimum?
   }
 
   test("times") {
-    assert(sizeOf(times) == 278) // was 256
+    assert(sizeOf(times) == 174) // TODO: what's the optimum?
   }
 }

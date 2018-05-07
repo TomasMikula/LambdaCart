@@ -1,7 +1,7 @@
 package lambdacart
 
 import lambdacart.util.{~~>, LeibnizOps}
-import lambdacart.util.typealigned.{ACons, ANil}
+import lambdacart.util.typealigned.{ACons, AList, ANil}
 import scalaz.Leibniz
 import scalaz.Leibniz.===
 
@@ -256,14 +256,18 @@ object CodeTerm {
   def constA[X, Y]: φ[X, Hom[Y, X]]                       = wrap(FreeCCC.constA)
   def getConst[X, Y](f: φ[Unit, Hom[X, Y]]): φ[X, Y]      = wrap(FreeCCC.getConst(f.unwrap))
   def andThen[X, Y, Z](f: φ[X, Y], g: φ[Y, Z]): φ[X, Z]   = wrap(FreeCCC.andThen(f.unwrap, g.unwrap))
-  def flip[X, Y, Z](f: φ[(X**Y), Z]): φ[(Y**X), Z]        = wrap(FreeCCC.flip(f.unwrap))
-  def swap[X, Y, Z](f: φ[X, Hom[Y, Z]]): φ[Y, Hom[X, Z]]  = wrap(FreeCCC.swap(f.unwrap))
+  def flipArg[X, Y, Z](f: φ[(X**Y), Z]): φ[(Y**X), Z]     = wrap(FreeCCC.flipArg(f.unwrap))
+  def swapArgs[X,Y,Z](f: φ[X, Hom[Y,Z]]): φ[Y, Hom[X, Z]] = wrap(FreeCCC.swapArgs(f.unwrap))
   def eval[X, Y]: φ[Hom[X, Y] ** X, Y]                    = wrap(FreeCCC.eval)
   def assocR[X, Y, Z]: φ[((X**Y)**Z), (X**(Y**Z))]        = wrap(FreeCCC.assocR)
   def assocL[X, Y, Z]: φ[(X**(Y**Z)), ((X**Y)**Z)]        = wrap(FreeCCC.assocL)
   def diag[X]: φ[X, (X ** X)]                             = wrap(FreeCCC.diag)
   def parallel[X1, X2, Y1, Y2](f: φ[X1, Y1], g: φ[X2, Y2]): φ[(X1**X2), (Y1**Y2)] =
     wrap(FreeCCC.parallel(f.unwrap, g.unwrap))
+  def sequence[U, V, W, X](f: φ[U, V], g: φ[V, W], h: φ[W, X]): φ[U, X] =
+    wrap(FreeCCC.sequence(f.unwrap :: g.unwrap :: AList(h.unwrap)))
+  def sequence[U, V, W, X, Y](f: φ[U, V], g: φ[V, W], h: φ[W, X], i: φ[X, Y]): φ[U, Y] =
+    wrap(FreeCCC.sequence(f.unwrap :: g.unwrap :: h.unwrap :: AList(i.unwrap)))
 
   // treat function object as a function
   def code[A, B](f: DataTerm[Hom[A, B]]): CodeTerm[A, B] =
@@ -308,7 +312,7 @@ object CodeTerm {
     final override def apply      (f: Terminal[A]     )(implicit ev:     Unit === B) = caseTerminal
     final override def apply[X, Y](f: Curry[A, X, Y]  )(implicit ev: Hom[X,Y] === B) = caseCurry(wrap(f.f))
     final override def apply[X, Y](f: Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) = caseUncurry(wrap(f.f))
-    final override def apply[X, Y](f: Const[X, Y]     )(implicit ev1: A === Unit, ev2: Hom[X,Y] === B) = caseConst(wrap(f.f))
+    final override def apply[X, Y](f: Const[A, X, Y]  )(implicit ev: Hom[X,Y] === B) = caseConst(wrap(f.f))
     final override def apply      (f: Lift[A, B]) =
       f.f match {
         case  Left(f) => casePrimitive(f)

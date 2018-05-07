@@ -119,10 +119,12 @@ sealed abstract class AList1[F[_, _], A, B] {
 
   def toList: AList[F, A, B] = head :: tail
 
-  override def toString: String = {
-    val sb = new StringBuilder("AList1(")
-    foldLeft1[λ[α => StringBuilder]](λ[F[A, ?] ~> λ[α => StringBuilder]](f => sb.append(f.toString)))(ν[RightAction[λ[α => StringBuilder], F]][α, β]((buf, f) => buf.append(", ").append(f.toString))).append(')').toString
+  def mkString(prefix: String, delim: String, suffix: String)(show: F[_, _] => String): String = {
+    val sb = new StringBuilder(prefix)
+    foldLeft1[λ[α => StringBuilder]](λ[F[A, ?] ~> λ[α => StringBuilder]](f => sb.append(show(f))))(ν[RightAction[λ[α => StringBuilder], F]][α, β]((buf, f) => buf.append(delim).append(show(f)))).append(suffix).toString
   }
+
+  override def toString: String = mkString("AList1(", ", ", ")")(_.toString)
 }
 
 final case class ACons1[F[_, _], A, X, B](head: F[A, X], tail: AList[F, X, B]) extends AList1[F, A, B] {

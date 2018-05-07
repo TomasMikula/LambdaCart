@@ -125,6 +125,19 @@ sealed abstract class AList[F[_, _], A, B] {
     Tag.unwrap(sum[Boolean @@ Disjunction](q))
   }
 
+  def filterNot(p: F ~~> λ[(α, β) => Option[α === β]]): AList[F, A, B] = {
+    @tailrec def go[X](revAcc: Composed[F, A, X], fs: AList[F, X, B]): AList[F, A, B] =
+      fs match {
+        case ACons(h, t) => p.apply(h) match {
+          case Some(ev) => go(ev.subst[Composed[F, A, ?]](revAcc), t)
+          case None     => go(h :: revAcc, t)
+        }
+        case nil @ ANil() => nil.subst[Composed[F, A, ?]](revAcc).reverse
+      }
+
+    go(AList.empty[Op[F, ?, ?], A], this)
+  }
+
   def size: Int = {
     @tailrec def go(acc: Int, fs: AList[F, _, _]): Int = fs match {
       case ACons(_, t) => go(acc + 1, t)
