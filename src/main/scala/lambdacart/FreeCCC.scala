@@ -1025,6 +1025,62 @@ object FreeCCC {
       }
   }
 
+  /** `H` can handle `A`, producing `R`. */
+  type Handler[H, A, R] = (H, A) => R
+
+  /**
+   * For all `A`, `B` and `R`,
+   * `H[A, B, R]` handles `F[A, B]`, producing `R`.
+   */
+  trait UniversalHandler[H[_,_,_], F[_,_]] {
+    def apply[A, B, R]: Handler[H[A, B, R], F[A, B], R]
+  }
+
+  implicit def visitorUniversalHandler[:->:[_,_], **[_,_], T, H[_,_]]: UniversalHandler[Visitor[:->:, **, T, H, ?, ?, ?], FreeCCC[:->:, **, T, H, ?, ?]] =
+    new UniversalHandler[Visitor[:->:, **, T, H, ?, ?, ?], FreeCCC[:->:, **, T, H, ?, ?]] {
+      def apply[A, B, R] = (visitor, f) => f.visit(visitor)
+    }
+
+  trait CCCTermHandler[F[_,_], :->:[_,_], **[_,_], T, H[_,_], A, B, R] {
+    def caseOpaque        (f: A :->: B           )                               : R
+    def caseSequence      (f: AList1[F, A, B]    )                               : R
+    def caseId                                     (implicit ev:        A === B) : R
+    def caseFst[X]                                 (implicit ev: (B ** X) === A) : R
+    def caseSnd[X]                                 (implicit ev: (X ** B) === A) : R
+    def caseProd[X, Y]    (f: F[A, X], g: F[A, Y]) (implicit ev: (X ** Y) === B) : R
+    def caseTerminal                               (implicit ev:        T === B) : R
+    def caseCurry[X, Y]   (f: F[A ** X, Y])        (implicit ev:  H[X, Y] === B) : R
+    def caseUncurry[X, Y] (f: F[X, H[Y, B]])       (implicit ev: (X ** Y) === A) : R
+    def caseConst[X, Y]   (f: F[X, Y])             (implicit ev:  H[X, Y] === B) : R
+  }
+
+  def termHandlerToVisitor[:->:[_,_], **[_,_], T, H[_,_], A, B, R](
+    h: CCCTermHandler[FreeCCC[:->:, **, T, H, ?, ?], :->:, **, T, H, A, B, R]
+  ): Visitor[:->:, **, T, H, A, B, R] = new Visitor[:->:, **, T, H, A, B, R] {
+    def apply      (f:     Lift[A, B]   )                              = h.caseOpaque(f.f)
+    def apply      (f: Sequence[A, B]   )                              = h.caseSequence(f.fs)
+    def apply      (f:       Id[A]      )(implicit ev:        A === B) = h.caseId
+    def apply[X]   (f:      Fst[B, X]   )(implicit ev: (B ** X) === A) = h.caseFst
+    def apply[X]   (f:      Snd[X, B]   )(implicit ev: (X ** B) === A) = h.caseSnd
+    def apply[X, Y](f:     Prod[A, X, Y])(implicit ev: (X ** Y) === B) = h.caseProd(f.f, f.g)
+    def apply      (f: Terminal[A]      )(implicit ev:        T === B) = h.caseTerminal
+    def apply[X, Y](f:    Curry[A, X, Y])(implicit ev:  H[X, Y] === B) = h.caseCurry(f.f)
+    def apply[X, Y](f:  Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) = h.caseUncurry(f.f)
+    def apply[X, Y](f:    Const[A, X, Y])(implicit ev:  H[X, Y] === B) = h.caseConst(f.f)
+  }
+
+  def termHandlerUniversality[:->:[_,_], **[_,_], T, H[_,_]]:
+    UniversalHandler[
+      CCCTermHandler[FreeCCC[:->:, **, T, H, ?, ?], :->:, **, T, H, ?, ?, ?],
+      FreeCCC[:->:, **, T, H, ?, ?]
+    ] =
+    new UniversalHandler[
+      CCCTermHandler[FreeCCC[:->:, **, T, H, ?, ?], :->:, **, T, H, ?, ?, ?],
+      FreeCCC[:->:, **, T, H, ?, ?]
+    ] {
+      def apply[A, B, R] = (handler, f) => f.visit(termHandlerToVisitor(handler))
+    }
+
   /**
    * Represents projection from a data type,
    * namely forgetting some part of the data.
@@ -2176,7 +2232,8 @@ object FreeCCC {
   def andThen[:->:[_, _], **[_, _], T, H[_, _], A, B, C](f: FreeCCC[:->:, **, T, H, A, B], g: FreeCCC[:->:, **, T, H, B, C]): FreeCCC[:->:, **, T, H, A, C] =
     compose(g, f)
 
-  def sequence[:->:[_, _], **[_, _], T, H[_, _], A, B](fs: AList[FreeCCC[:->:, **, T, H, ?, ?], A, B]): FreeCCC[:->:, **, T, H, A, B] =
+  def sequence[:->:[_, _], **[_, _], T, H[_, _], A, B](fs: AList[FreeCCC[:->:, **, T, H, ?, ?], A, B]): FreeCCC[:->:, **, T, H, A, B] = {
+    // TODO: might also flatten Sequences
     fs.filterNot(ν[FreeCCC[:->:, **, T, H, ?, ?] ~~> λ[(a, b) => Option[a === b]]].apply[a, b](_.isId)) match {
       case ev @ ANil()   => id[:->:, **, T, H, A].castB(ev.leibniz)
       case ACons(f1, fs1) => fs1 match {
@@ -2184,6 +2241,7 @@ object FreeCCC {
         case ACons(f2, fs2) => Sequence(f1 +: (f2 :: fs2))
       }
     }
+  }
 
   def swap[:->:[_, _], **[_, _], T, H[_, _], A, B]: FreeCCC[:->:, **, T, H, A ** B, B ** A] =
     prod(snd, fst)
