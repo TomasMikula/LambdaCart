@@ -20,14 +20,15 @@ sealed trait Projection[**[_,_], T, A, B] {
 
   type Prj[X, Y] = Projection[**, T, X, Y]
   type Visitor[R] = Projection.Visitor[**, T, A, B, R]
+  type VisitorNT[R] = Projection.VisitorNT[**, T, A, B, R]
   type OptVisitor[R] = Projection.OptVisitor[**, T, A, B, R]
 
   def visit[R](v: Visitor[R]): R
 
+  def switchTerminal: (T === B) Either NonTerminal[**, T, A, B]
+
   def castA[C](implicit ev: C === A): Prj[C, B] = ev.flip.subst[Prj[?, B]](this)
   def castB[C](implicit ev: B === C): Prj[A, C] = ev.subst[Prj[A, ?]](this)
-
-  def unital(implicit ev: A === T): B === T
 
   def andThen[C](that: Prj[B, C]): Prj[A, C] =
     this.switchTerminal match {
@@ -48,11 +49,26 @@ sealed trait Projection[**[_,_], T, A, B] {
   def appendTo[:->:[_,_], H[_,_], A0](f: FreeCCC[:->:, **, T, H, A0, A]): FreeCCC[:->:, **, T, H, A0, B] =
     f andThen this.toFreeCCC
 
+  def unital(implicit ev: A === T): B === T =
+    visit(new Visitor[B === T] {
+      def apply[Y](p: Fst[B, Y])(implicit ev: A === (B ** Y)) = sys.error("impossible")
+      def apply[X](p: Snd[X, B])(implicit ev: A === (X ** B)) = sys.error("impossible")
+      def apply[A1, A2, B1, B2](p: Par[A1, A2, B1, B2])(implicit ev1: A === (A1 ** A2), ev2: (B1 ** B2) === B) =
+        sys.error("impossible")
+      def apply(p: Unit[A])(implicit ev1: T === B) = ev1.flip
+      def apply(p: Id[A])(implicit ev1: A === B) = ev1.flip andThen ev
+      def apply[X](p: AndThen[A, X, B]) = p.q.unital(p.p.unital)
+    })
 
-  def isUnit: Option[B === T] = None
-  def isId: Option[A === B] = None
-  def isFst[X, Y](implicit ev: A === (X ** Y)): Option[X === B] = None
-  def isSnd[X, Y](implicit ev: A === (X ** Y)): Option[Y === B] = None
+  def isUnit: Option[B === T] =
+    visit(new OptVisitor[B === T] {
+      override def apply(p: Unit[A])(implicit ev: T === B) = Some(ev.flip)
+    })
+
+  final def isId: Option[A === B] =
+    visit(new OptVisitor[A === B] {
+      override def apply(p: Id[A])(implicit ev: A === B) = Some(ev)
+    })
 
   def size: Int = visit(new Visitor[Int] {
     def apply[Y](p: Fst[B, Y])(implicit ev: A === (B ** Y)) = 1
@@ -75,43 +91,52 @@ sealed trait Projection[**[_,_], T, A, B] {
     })
 
   /** Greatest common prefix of this projection and that projection. */
-  final def gcd[C](that: Prj[A, C]): APair[Prj[A, ?], λ[a => (Prj[a, B], Prj[a, C])]] =
+  final def gcd[C](that: Prj[A, C]): APair[Prj[A, ?], λ[a => (Prj[a, B], Prj[a, C])]] = {
+    def ret[X](p: Prj[A, X], q: Prj[X, B], r: Prj[X, C]) =
+      APair[Prj[A, ?], λ[a => (Prj[a, B], Prj[a, C])], X](p, (q, r))
+
     (this.switchTerminal, that.switchTerminal) match {
-      case (Left(ev1), Left(ev2)) => gcdRet(Unit(), Id().castB(ev1), Id().castB(ev2))
-      case (Left(ev1), Right(p2)) => gcdRet(p2, Unit().castB(ev1), Id())
-      case (Right(p1), Left(ev2)) => gcdRet(p1, Id(), Unit().castB(ev2))
+      case (Left(ev1), Left(ev2)) => ret(Unit(), Id().castB(ev1), Id().castB(ev2))
+      case (Left(ev1), Right(p2)) => ret(p2, Unit().castB(ev1), Id())
+      case (Right(p1), Left(ev2)) => ret(p1, Id(), Unit().castB(ev2))
       case (Right(p1), Right(p2)) =>
         val r = p1 gcdNT p2
-        gcdRet(r._1, r._2._1, r._2._2)
+        ret(r._1, r._2._1, r._2._2)
+    }
+  }
+
+  def ignoresSnd[X, Y](implicit ev: A === (X ** Y)): Option[Prj[X, B]] =
+    switchTerminal match {
+      case Left(ev) => Some(Unit().castB(ev))
+      case Right(p) => p.split[X, Y] match {
+        case Left3(p1) => Some(p1)
+        case _         => None
+      }
     }
 
-  def ignoresSnd[X, Y](implicit ev: (X ** Y) === A): Option[Prj[X, B]] = {
-    val gcd = this.castA(ev) gcd Fst[**, T, X, Y]
-    val (common, (rest, _)) = (gcd._1, gcd._2)
-    common.isFst[X, Y] map (ev1 => rest.castA(ev1))
-  }
-
-  def ignoresFst[X, Y](implicit ev: (X ** Y) === A): Option[Prj[Y, B]] = {
-    val gcd = this.castA(ev) gcd Snd[**, T, X, Y]
-    val (common, (rest, _)) = (gcd._1, gcd._2)
-    common.isSnd[X, Y] map (ev1 => rest.castA(ev1))
-  }
-
-  private def gcdRet[X, C](p: Prj[A, X], q: Prj[X, B], r: Prj[X, C]) =
-    APair[Prj[A, ?], λ[a => (Prj[a, B], Prj[a, C])], X](p, (q, r))
+  def ignoresFst[X, Y](implicit ev: A === (X ** Y)): Option[Prj[Y, B]] =
+    switchTerminal match {
+      case Left(ev) => Some(Unit().castB(ev))
+      case Right(p) => p.split[X, Y] match {
+        case Right3(p2) => Some(p2)
+        case _          => None
+      }
+    }
 
   private[Projection] implicit class ProductLeibnizOps[X1, X2, Y1, Y2](ev: (X1 ** X2) === (Y1 ** Y2)) {
     def fst: X1 === Y1 = Leibniz.force[Nothing, Any, X1, Y1]
     def snd: X2 === Y2 = Leibniz.force[Nothing, Any, X2, Y2]
   }
-
-  def switchTerminal: (T === B) Either NonTerminal[**, T, A, B]
 }
 
 object Projection {
   import FreeCCC.Shuffle
 
   sealed trait NonTerminal[**[_,_], T, A, B] extends Projection[**, T, A, B] {
+    def visitNT[R](v: VisitorNT[R]): R
+
+    final override def visit[R](v: Visitor[R]): R = visitNT(v)
+
     def andThenNT[C](that: NonTerminal[**, T, B, C]): NonTerminal[**, T, A, C] =
       (this.isId map {
         ev => that.castA(ev)
@@ -121,11 +146,11 @@ object Projection {
         // TODO handle anything ending in product type, not just Par
         override def apply[A1, A2, B1, B2](p: Par[A1, A2, B1, B2])(implicit
             ev1: A === (A1 ** A2), ev2: (B1 ** B2) === B) =
-          (that.isFst[B1, B2](ev2.flip) map {
-            ev => (Fst[A1, A2] andThenNT p.p1).castA(ev1).castB(ev)
-          }) orElse (that.isSnd[B1, B2](ev2.flip) map {
-            ev => (Snd[A1, A2] andThenNT p.p2).castA(ev1).castB(ev)
-          })
+          that.split[B1, B2](ev2.flip) match {
+            case Left3(q)   => Some(Fst[A1, A2].castA[A] andThenNT p.p1 andThenNT q)
+            case Right3(q)  => Some(Snd[A1, A2].castA[A] andThenNT p.p2 andThenNT q)
+            case Middle3(_) => None
+          }
       }) getOrElse (
         AndThen(this, that)
       )
@@ -230,19 +255,6 @@ object Projection {
       go[A, B, C](AList(this), AList(that))
     }
 
-    /** Helper to create return value for [[#gcd]]. */
-    private[NonTerminal] def gcdRet[X, C](p: NonTerminal[**, T, A, X], q: NonTerminal[**, T, X, B], r: NonTerminal[**, T, X, C]) =
-      APair[NonTerminal[**, T, A, ?], λ[a => (NonTerminal[**, T, a, B], NonTerminal[**, T, a, C])], X](p, (q, r))
-
-    /** Helper to create return value for [[#gcd]] that represents no (non-trivial) common prefix. */
-    private[NonTerminal] def noGcd[C](that: NonTerminal[**, T, A, C]): APair[NonTerminal[**, T, A, ?], λ[a => (NonTerminal[**, T, a, B], NonTerminal[**, T, a, C])]] =
-      gcdRet(Id[**, T, A], this, that)
-
-    private[NonTerminal] def gcdFlip[C](that: NonTerminal[**, T, A, C]): APair[NonTerminal[**, T, A, ?], λ[a => (NonTerminal[**, T, a, C], NonTerminal[**, T, a, B])]] = {
-      val x = gcdNT(that)
-      that.gcdRet(x._1, x._2._2, x._2._1)
-    }
-
     def switchTerminal: (T === B) Either NonTerminal[**, T, A, B] = Right(this)
 
     override def castA[A0](implicit ev: A0 === A): NonTerminal[**, T, A0, B] =
@@ -259,161 +271,137 @@ object Projection {
      * returns the remaining projection from the second part (in `Right3`).
      * Otherwise, decomposes into projections from each of the two parts (returned in `Middle3`).
      */
-    def split[A1, A2](implicit ev: A === (A1 ** A2)): Either3[
+    final def split[A1, A2](implicit ev: A === (A1 ** A2)): Either3[
       NonTerminal[**, T, A1, B],
       A2Pair[
         λ[(b1, b2) => (NonTerminal[**, T, A1, b1], NonTerminal[**, T, A2, b2])],
         λ[(b1, b2) => (b1 ** b2) === B]
       ],
       NonTerminal[**, T, A2, B]
-    ]
+    ] = {
+      def ret[B1, B2](p1: NonTerminal[**, T, A1, B1], p2: NonTerminal[**, T, A2, B2])(implicit ev: (B1 ** B2) === B) =
+        A2Pair[
+          λ[(b1, b2) => (NonTerminal[**, T, A1, b1], NonTerminal[**, T, A2, b2])],
+          λ[(b1, b2) => (b1 ** b2) === B],
+          B1, B2
+        ]((p1, p2), ev)
 
-    /** Helper to create return value for [[#split]]. */
-    private[Projection] def splitRet[A1, A2, B1, B2](p1: NonTerminal[**, T, A1, B1], p2: NonTerminal[**, T, A2, B2])(implicit ev: (B1 ** B2) === B) =
-      A2Pair[
-        λ[(b1, b2) => (NonTerminal[**, T, A1, b1], NonTerminal[**, T, A2, b2])],
-        λ[(b1, b2) => (b1 ** b2) === B],
-        B1, B2
-      ]((p1, p2), ev)
+      visitNT(new VisitorNT[Either3[
+        NonTerminal[**, T, A1, B],
+        A2Pair[
+          λ[(b1, b2) => (NonTerminal[**, T, A1, b1], NonTerminal[**, T, A2, b2])],
+          λ[(b1, b2) => (b1 ** b2) === B]
+        ],
+        NonTerminal[**, T, A2, B]
+      ]] {
+        def apply[Y](p: Fst[B, Y])(implicit ev1: A === (B ** Y)) = Left3(Id[A1].castB((ev.flip andThen ev1).fst))
+        def apply[X](p: Snd[X, B])(implicit ev1: A === (X ** B)) = Right3(Id[A2].castB((ev.flip andThen ev1).snd))
+        def apply[X1, X2, Y1, Y2](p: Par[X1, X2, Y1, Y2])(implicit ev1: A === (X1 ** X2), ev2: (Y1 ** Y2) === B) =
+          Middle3(ret(p.p1.castA(ev.flip.andThen(ev1).fst), p.p2.castA(ev.flip.andThen(ev1).snd)))
+        def apply(p: Id[A])(implicit ev1: A === B) = Middle3(ret(Id[A1], Id[A2])(ev.flip andThen ev1))
+        def apply[X](p: AndThen[A, X, B]) =
+          p.p.split[A1, A2] match {
+            case Left3(p1)  => Left3(AndThen(p1, p.q))
+            case Right3(p1) => Right3(AndThen(p1, p.q))
+            case Middle3(p12) =>
+              val ((p1, p2), ev) = (p12._1, p12._2)
+              p.q.castA(ev).split[p12.A, p12.B] match {
+                case Left3(q) => Left3(AndThen(p1, q))
+                case Right3(q) => Right3(AndThen(p2, q))
+                case Middle3(q12) => Middle3(ret(AndThen(p1, q12._1._1), AndThen(p2, q12._1._2))(q12._2))
+              }
+          }
+      })
+    }
 
     /**
      * Permutes input `A` into parts `B ** Y`, for some `Y`.
      * If this projection is an identity projection, returns evidence that `A` = `B`.
      */
-    def toShuffle: Either[A === B, Exists[λ[y => Shuffle[**, A, B ** y]]]]
+    def toShuffle: Either[A === B, Exists[λ[y => Shuffle[**, A, B ** y]]]] = {
+      def shuffle[Y](s: Shuffle[**, A, B ** Y]): Exists[λ[y => Shuffle[**, A, B ** y]]] =
+        Exists[λ[y => Shuffle[**, A, B ** y]], Y](s)
 
-    protected def shuffle[Y](s: Shuffle[**, A, B ** Y]): Exists[λ[y => Shuffle[**, A, B ** y]]] =
-      Exists[λ[y => Shuffle[**, A, B ** y]], Y](s)
+      visitNT(new VisitorNT[Either[A === B, Exists[λ[y => Shuffle[**, A, B ** y]]]]] {
+        def apply[Y](p: Fst[B, Y])(implicit ev: A === (B ** Y)) =
+          Right(shuffle(Shuffle.Id[**, B ** Y]().castA[A]))
+
+        def apply[X](p: Snd[X, B])(implicit ev: A === (X ** B)) =
+          Right(shuffle(Shuffle.Swap[**, X, B]().castA[A]))
+
+        def apply(p: Id[A])(implicit ev: A === B) =
+          Left(ev)
+
+        def apply[A1, A2, B1, B2](p: Par[A1, A2, B1, B2])(implicit ev1: A === (A1 ** A2), ev2: (B1 ** B2) === B) =
+          (p.p1.toShuffle, p.p2.toShuffle) match {
+            case (Left(ev3), Left(ev4)) =>
+              Left(ev1 andThen (ev3 lift2[**] ev4) andThen ev2)
+            case (Left(ev3), Right(s2)) =>
+              Right(shuffle[s2.A](Shuffle.par(Shuffle.Id[**, A1]().castB(ev3), s2.value).andThen(Shuffle.AssocRL()).castA[A].castB(ev2 lift2[**] implicitly)))
+            case (Right(s1), Left(ev4)) =>
+              Right(shuffle[s1.A](
+                Shuffle.par(s1.value, Shuffle.Id[**, A2]().castB(ev4)).castA[A] andThen
+                Shuffle.AssocLR() andThen
+                Shuffle.par(Shuffle.Id(), Shuffle.Swap()) andThen
+                Shuffle.AssocRL().castB(ev2 lift2[**] implicitly)
+              ))
+            case (Right(s1), Right(s2)) =>
+              Right(shuffle[s1.A ** s2.A](
+                Shuffle.par(s1.value, s2.value).castA[A] andThen
+                Shuffle.AssocLR() andThen
+                Shuffle.par(
+                  Shuffle.Id(),
+                  Shuffle.AssocRL() andThen Shuffle.par(Shuffle.Swap[**, s1.A, B2](), Shuffle.Id[**, s2.A]()) andThen Shuffle.AssocLR()
+                ) andThen
+                Shuffle.AssocRL().castB(ev2 lift2[**] implicitly)
+              ))
+          }
+
+        def apply[X](p: AndThen[A, X, B]) =
+          p.p.toShuffle match {
+            case Left(ev) => p.q.castA(ev).toShuffle
+            case Right(s) => p.q.toShuffle match {
+              case Left(ev) => Right(ev.subst[λ[α => Exists[λ[y => Shuffle[**, A, α ** y]]]]](s))
+              case Right(t) => Right(shuffle[t.A ** s.A](s.value andThen Shuffle.par(t.value, Shuffle.Id()) andThen Shuffle.AssocLR()))
+            }
+          }
+      })
+    }
   }
 
   case class Fst[**[_,_], T, A, B]() extends NonTerminal[**, T, A ** B, A] {
-    def visit[R](v: Visitor[R]): R = v(this)
+    def visitNT[R](v: VisitorNT[R]): R = v(this)
 
     def deriveLeibniz[X, Y](implicit ev: (A ** B) === (X ** Y)): A === X =
       Leibniz.force[Nothing, Any, A, X]
-
-    def unital(implicit ev: (A ** B) === T): A === T =
-      sys.error("impossible")
-
-    override def isFst[X, Y](implicit ev: (A ** B) === (X ** Y)): Option[X === A] =
-      Some(ev.fst.flip)
-
-    def split[A1, A2](implicit ev: (A ** B) === (A1 ** A2)) =
-      Left3(Id().castB(ev.fst.flip))
-
-    def toShuffle: Either[(A ** B) === A, Exists[λ[y => Shuffle[**, A ** B, A ** y]]]] =
-      Right(shuffle(Shuffle.Id[**, A ** B]()))
   }
 
   case class Snd[**[_,_], T, A, B]() extends NonTerminal[**, T, A ** B, B] {
-    def visit[R](v: Visitor[R]): R = v(this)
+    def visitNT[R](v: VisitorNT[R]): R = v(this)
 
     def deriveLeibniz[X, Y](implicit ev: (A ** B) === (X ** Y)): B === Y =
       Leibniz.force[Nothing, Any, B, Y]
-
-    def unital(implicit ev: (A ** B) === T): B === T =
-      sys.error("impossible")
-
-    override def isSnd[X, Y](implicit ev: (A ** B) === (X ** Y)): Option[Y === B] =
-      Some(ev.snd.flip)
-
-    def split[A1, A2](implicit ev: (A ** B) === (A1 ** A2)) =
-      Right3(Id().castB(ev.snd.flip))
-
-    def toShuffle: Either[(A ** B) === B, Exists[λ[y => Shuffle[**, A ** B, B ** y]]]] =
-      Right(shuffle(Shuffle.Swap[**, A, B]()))
   }
 
   case class Par[**[_,_], T, A1, A2, B1, B2](p1: NonTerminal[**, T, A1, B1], p2: NonTerminal[**, T, A2, B2]) extends NonTerminal[**, T, A1 ** A2, B1 ** B2] {
-    def visit[R](v: Visitor[R]): R = v(this)
-
-    def unital(implicit ev: (A1 ** A2) === T): (B1 ** B2) === T =
-      sys.error("impossible")
-
-    def split[X1, X2](implicit ev: (A1 ** A2) === (X1 ** X2)) =
-      Middle3(splitRet(p1.castA(ev.fst.flip), p2.castA(ev.snd.flip)))
-
-    def toShuffle: Either[(A1 ** A2) === (B1 ** B2), Exists[λ[y => Shuffle[**, A1 ** A2, (B1 ** B2) ** y]]]] =
-      (p1.toShuffle, p2.toShuffle) match {
-        case (Left(ev1), Left(ev2)) =>
-          Left(ev1 lift2[**] ev2)
-        case (Left(ev1), Right(s2)) =>
-          Right(shuffle[s2.A](Shuffle.par(Shuffle.Id[**, A1]().castB(ev1), s2.value) andThen Shuffle.AssocRL()))
-        case (Right(s1), Left(ev2)) =>
-          Right(shuffle[s1.A](
-            Shuffle.par(s1.value, Shuffle.Id[**, A2]().castB(ev2)) andThen
-            Shuffle.AssocLR() andThen
-            Shuffle.par(Shuffle.Id(), Shuffle.Swap()) andThen
-            Shuffle.AssocRL()
-          ))
-        case (Right(s1), Right(s2)) =>
-          Right(shuffle[s1.A ** s2.A](
-            Shuffle.par(s1.value, s2.value) andThen
-            Shuffle.AssocLR() andThen
-            Shuffle.par(
-              Shuffle.Id(),
-              Shuffle.AssocRL() andThen Shuffle.par(Shuffle.Swap[**, s1.A, B2](), Shuffle.Id[**, s2.A]()) andThen Shuffle.AssocLR()
-            ) andThen
-            Shuffle.AssocRL()
-          ))
-      }
+    def visitNT[R](v: VisitorNT[R]): R = v(this)
   }
 
   case class Unit[**[_,_], T, A]() extends Projection[**, T, A, T] {
     def visit[R](v: Visitor[R]): R = v(this)
 
-    def unital(implicit ev: A === T): T === T =
-      implicitly
-
-    override def isUnit: Option[T === T] = Some(implicitly)
     def switchTerminal: (T === T) Either NonTerminal[**, T, A, T] = Left(implicitly)
   }
 
   case class Id[**[_,_], T, A]() extends NonTerminal[**, T, A, A] {
-    def visit[R](v: Visitor[R]): R = v(this)
-
-    def unital(implicit ev: A === T): A === T =
-      ev
-
-    override def isId: Option[A === A] = Some(implicitly)
-
-    def split[A1, A2](implicit ev: A === (A1 ** A2)) =
-      Middle3(splitRet(Id[**, T, A1](), Id[**, T, A2]())(ev.flip))
-
-    def toShuffle: Either[A === A, Exists[λ[y => Shuffle[**, A, A ** y]]]] =
-      Left(implicitly)
+    def visitNT[R](v: VisitorNT[R]): R = v(this)
   }
 
   case class AndThen[**[_,_], T, A, B, C](p: NonTerminal[**, T, A, B], q: NonTerminal[**, T, B, C]) extends NonTerminal[**, T, A, C] {
-    def visit[R](v: Visitor[R]): R = v(this)
-
-    def unital(implicit ev: A === T): C === T =
-      q.unital(p.unital)
-
-    def split[A1, A2](implicit ev: A === (A1 ** A2)) =
-      p.split[A1, A2] match {
-        case Left3(p) => Left3(AndThen(p, q))
-        case Right3(p) => Right3(AndThen(p, q))
-        case Middle3(p12) =>
-          val ((p1, p2), ev) = (p12._1, p12._2)
-          q.castA(ev).split[p12.A, p12.B] match {
-            case Left3(q) => Left3(AndThen(p1, q))
-            case Right3(q) => Right3(AndThen(p2, q))
-            case Middle3(q12) => Middle3(splitRet(AndThen(p1, q12._1._1), AndThen(p2, q12._1._2))(q12._2))
-          }
-      }
-
-    def toShuffle: Either[A === C, Exists[λ[y => Shuffle[**, A, C ** y]]]] =
-      p.toShuffle match {
-        case Left(ev) => q.castA(ev).toShuffle
-        case Right(s) => q.toShuffle match {
-          case Left(ev) => Right(ev.subst[λ[α => Exists[λ[y => Shuffle[**, A, α ** y]]]]](s))
-          case Right(t) => Right(shuffle[t.A ** s.A](s.value andThen Shuffle.par(t.value, Shuffle.Id()) andThen Shuffle.AssocLR()))
-        }
-      }
+    def visitNT[R](v: VisitorNT[R]): R = v(this)
   }
 
-  trait Visitor[**[_,_], T, A, B, R] {
+  trait VisitorNT[**[_,_], T, A, B, R] {
     type π[X, Y] = Projection[**, T, X, Y]
     type Π[X, Y] = Projection.NonTerminal[**, T, X, Y]
 
@@ -434,9 +422,12 @@ object Projection {
     def apply[Y](p: Fst[B, Y])(implicit ev: A === (B ** Y)): R
     def apply[X](p: Snd[X, B])(implicit ev: A === (X ** B)): R
     def apply[A1, A2, B1, B2](p: Par[A1, A2, B1, B2])(implicit ev1: A === (A1 ** A2), ev2: (B1 ** B2) === B): R
-    def apply(p: Unit[A])(implicit ev: T === B): R
     def apply(p: Id[A])(implicit ev: A === B): R
     def apply[X](p: AndThen[A, X, B]): R
+  }
+
+  trait Visitor[**[_,_], T, A, B, R] extends VisitorNT[**, T, A, B, R] {
+    def apply(p: Unit[A])(implicit ev: T === B): R
   }
 
   trait OptVisitor[**[_,_], T, A, B, R] extends Visitor[**, T, A, B, Option[R]] {
