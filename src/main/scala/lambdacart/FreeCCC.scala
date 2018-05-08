@@ -60,10 +60,10 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
   def uncurry[X, Y](implicit ev: B === H[X, Y]): FreeCCC[:->:, **, T, H, A**X, Y] =
     FreeCCC.uncurry(this.castB(ev))
 
-  def asSequence: Sequence[:->:, **, T, H, A, B] =
-    visit(new OptVisitor[Sequence[:->:, **, T, H, A, B]] {
-      override def apply(f: Sequence[A, B]) = Some(f)
-    }).getOrElse(Sequence(AList1(this)))
+  def asSequence: AList1[FreeCCC[:->:, **, T, H, ?, ?], A, B] =
+    visit(new OptVisitor[AList1[FreeCCC[:->:, **, T, H, ?, ?], A, B]] {
+      override def apply(f: Sequence[A, B]) = Some(f.fs)
+    }).getOrElse(AList1(this))
 
   // FIXME unsafe, should instead return Option[A :=>: (B with C)]
   def termEqual[C](that: A :=>: C): Option[B === C] =
@@ -2307,8 +2307,8 @@ object FreeCCC {
           override def apply[Z1, Z2](g: Const[Y, Z1, Z2])(implicit ev: H[Z1, Z2] === Z) = Some(Const(g.f).castB[Z])
 
           override def apply[P, Q](g: Prod[Y, P, Q])(implicit ev: (P ** Q) === Z) = {
-            val g1s = g.f.asSequence.fs
-            val g2s = g.g.asSequence.fs
+            val g1s = g.f.asSequence
+            val g2s = g.g.asSequence
             val (g1h, g1t) = (g1s.head, g1s.tail)
             val (g2h, g2t) = (g2s.head, g2s.tail)
 
@@ -2316,7 +2316,7 @@ object FreeCCC {
             // to      `prod(curry(snd >>> h) >>> i, f >>> g2)`
             g1h.visit(new g1h.OptVisitor[X :=>: Z] {
               override def apply[R, S](g1h: Curry[Y, R, S])(implicit ev1: H[R, S] === g1s.A1) = {
-                val g1hs = g1h.f.asSequence.fs
+                val g1hs = g1h.f.asSequence
                 val (g1hh, g1ht) = (g1hs.head, g1hs.tail)
 
                 g1hh.visit(new g1hh.OptVisitor[X :=>: Z] {
@@ -2332,7 +2332,7 @@ object FreeCCC {
             // to      `prod(f >>> g1, curry(snd >>> h) >>> i)`
             g2h.visit(new g2h.OptVisitor[X :=>: Z] {
               override def apply[R, S](g2h: Curry[Y, R, S])(implicit ev1: H[R, S] === g2s.A1) = {
-                val g2hs = g2h.f.asSequence.fs
+                val g2hs = g2h.f.asSequence
                 val (g2hh, g2ht) = (g2hs.head, g2hs.tail)
 
                 g2hh.visit(new g2hh.OptVisitor[X :=>: Z] {
@@ -2373,7 +2373,7 @@ object FreeCCC {
                 val g0: Uncurry[P, Q, Z] = g.cast(ev.andThen(ev1).flip)
                 g0.f.visit(new g0.f.OptVisitor[X :=>: Z] {
                   override def apply(gf: Id[P])(implicit ev2: P === H[Q, Z]) = {
-                    val p1 = p.f.asSequence.fs.unsnoc1
+                    val p1 = p.f.asSequence.unsnoc1
                     val (p1init, p1last) = (p1._1, p1._2)
                     val e = sequence(p1init)
                     p1last.visit(new p1last.OptVisitor[X :=>: Z] {
@@ -2407,8 +2407,8 @@ object FreeCCC {
                 }
               })
           }).orElse({
-            val fs = f.f.asSequence.fs
-            val gs = f.g.asSequence.fs
+            val fs = f.f.asSequence
+            val gs = f.g.asSequence
             val (fh, ft) = (fs.head, fs.tail)
             val (gh, gt) = (gs.head, gs.tail)
 
@@ -2422,8 +2422,8 @@ object FreeCCC {
 //            gh.visit(new gh.OptVisitor[A :=>: B] {
 //              override def apply[P, Q](gh: Prod[A, P, Q])(implicit ev1: (P ** Q) === gs.A1) = {
 //                val (g1, g2) = (gh.f, gh.g)
-//                val g1s = g1.asSequence.fs
-//                val g2s = g2.asSequence.fs
+//                val g1s = g1.asSequence
+//                val g2s = g2.asSequence
 //                val (g1h, g1t) = (g1s.head, g1s.tail)
 //                val (g2h, g2t) = (g2s.head, g2s.tail)
 //
@@ -2456,8 +2456,8 @@ object FreeCCC {
 //            fh.visit(new fh.OptVisitor[A :=>: B] {
 //              override def apply[P, Q](fh: Prod[A, P, Q])(implicit ev1: (P ** Q) === fs.A1) = {
 //                val (f1, f2) = (fh.f, fh.g)
-//                val f1s = f1.asSequence.fs
-//                val f2s = f2.asSequence.fs
+//                val f1s = f1.asSequence
+//                val f2s = f2.asSequence
 //                val (f1h, f1t) = (f1s.head, f1s.tail)
 //                val (f2h, f2t) = (f2s.head, f2s.tail)
 //
@@ -2498,7 +2498,7 @@ object FreeCCC {
 
         override def apply[X, Y](f: Uncurry[X, Y, B])(implicit ev: A === (X ** Y)) = {
           // reduce uncurry(g >>> curry(h)) to parallel(g, id) >>> h
-          val gh = f.f.asSequence.fs.unsnoc1
+          val gh = f.f.asSequence.unsnoc1
           val (g, h) = (sequence(gh._1), gh._2)
           h.visit(new h.OptVisitor[A :=>: B] {
             override def apply[Y1, Z](h: Curry[gh.A, Y1, Z])(implicit ev1: H[Y1, Z] === H[Y, B]) =
