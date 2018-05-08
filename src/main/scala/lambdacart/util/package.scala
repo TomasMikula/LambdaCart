@@ -1,7 +1,8 @@
 package lambdacart
 
-import scalaz.Leibniz
+import scalaz.{@@, Leibniz, Writer}
 import scalaz.Leibniz.===
+import scalaz.Tags.Disjunction
 
 /** This package contains auxiliary things that are needed,
   * but are not the focus of this project, and are not found
@@ -27,6 +28,15 @@ package object util {
       def apply[A, B](implicit ev1: A === B): F[X, A] === F[Y, B] =
         ev.subst[λ[x => F[X, A] === F[x, B]]](
           ev1.subst[λ[a => F[X, A] === F[X, a]]](Leibniz.refl))
+    }
+  }
+
+  type Improvement[A] = Writer[Boolean @@ Disjunction, A]
+  object Improvement {
+    def improved[A](a: A) = Writer(Disjunction(true), a)
+    def unchanged[A](a: A) = Writer(Disjunction(false), a)
+    implicit class ImprovementOps[A](i: Improvement[A]) {
+      def getImproved: Option[A] = if(Disjunction.unwrap(i.run._1)) Some(i.run._2) else None
     }
   }
 }

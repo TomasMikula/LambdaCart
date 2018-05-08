@@ -2,7 +2,8 @@ package lambdacart
 
 import org.scalatest.FunSuite
 import lambdacart.util.typealigned.AList1
-import FreeCCC.{Prj, Shuffle}
+import FreeCCC.Shuffle
+import lambdacart.{Projection => Prj}
 
 class FreeCCCRewritesTest extends FunSuite {
 
@@ -148,7 +149,7 @@ class FreeCCCRewritesTest extends FunSuite {
     val f: ((X, Y), Z) :=>: (Y, Z) =
       prod(fst[(X, Y), Z] andThen snd, snd)
 
-    val pg = f.stripLeadingProjection
+    val pg = Prj.extractFrom(f)
     val (p, g) = (pg._1, pg._2)
 
     assert(p == Prj.par(Prj.Snd[**, Unit, X, Y](), Prj.Id[**, Unit, Z]()))
@@ -159,7 +160,7 @@ class FreeCCCRewritesTest extends FunSuite {
     val f: (X, (Y, Z)) :=>: (X, Z) =
       prod(fst[X, (Y, Z)], snd[X, (Y, Z)] andThen snd)
 
-    val pg = f.stripLeadingProjection
+    val pg = Prj.extractFrom(f)
     val (p, g) = (pg._1, pg._2)
 
     assert(p == Prj.par(Prj.Id[**, Unit, X](), Prj.Snd[**, Unit, Y, Z]()))
@@ -175,7 +176,7 @@ class FreeCCCRewritesTest extends FunSuite {
 
     val p: Prj[**, Unit, (X, Y), Y] = Prj.Snd()
 
-    val f1 = f.restrictResultTo(p)
+    val f1 = Prj.restrictResult(f)(p)
 
     val f0: (X, (Y, Z)) :=>: Y = andThen(snd[X, (Y, Z)], fst[Y, Z])
 
@@ -192,7 +193,7 @@ class FreeCCCRewritesTest extends FunSuite {
         snd[X, Y]
       )
 
-    val p = f.stripLeadingProjection._1
+    val p = Prj.extractFrom(f)._1
 
     val p0: Prj[**, Unit, (X, (Y, Z)), Y] =
       Prj.Snd() andThen Prj.Fst()
@@ -213,7 +214,7 @@ class FreeCCCRewritesTest extends FunSuite {
         andThen(fst[X ** Y, Z], snd[X, Y])
       )
 
-    val f1 = f.restrictResultTo(p)
+    val f1 = Prj.restrictResult(f)(p)
 
     assert(f1 == Some(f0))
   }
@@ -238,7 +239,7 @@ class FreeCCCRewritesTest extends FunSuite {
       )
 
 
-    val pg = f.stripLeadingProjection
+    val pg = Prj.extractFrom(f)
     val (p, g) = (pg._1, pg._2)
 
     val p0: Prj[**, Unit, W ** (X ** (Y ** Z)), X ** (Y ** Z)] =

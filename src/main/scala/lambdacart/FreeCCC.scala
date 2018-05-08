@@ -1,10 +1,11 @@
 package lambdacart
 
-import lambdacart.util.{~~>, Exists}
+import lambdacart.util.{~~>, Exists, Improvement}
+import lambdacart.util.Improvement._
 import lambdacart.util.LeibnizOps
 import lambdacart.util.typealigned.{ACons, AList, AList1, ANil, APair, A2Pair, LeftAction, RightAction}
 import scala.annotation.tailrec
-import scalaz.{~>, Either3, Left3, Leibniz, Middle3, Right3}
+import scalaz.{~>, Left3, Leibniz, Middle3, Right3}
 import scalaz.Leibniz.===
 import scalaz.std.anyVal._
 import scalaz.std.option._
@@ -22,7 +23,7 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
   type RewriteRule = FreeCCC.RewriteRule[:->:, **, T, H]
   type ClosedRewriteRule = FreeCCC.ClosedRewriteRule[:->:, **, T, H]
 
-  type Prj[X, Y] = FreeCCC.Prj[**, T, X, Y]
+  type Prj[X, Y] = Projection[**, T, X, Y]
   type FPrj[F, G] = FreeCCC.FPrj[**, T, H, F, G]
   type Expansion[X, X1] = FreeCCC.Expansion[**, T, X, X1]
   type Shuffle[X, X1] = FreeCCC.Shuffle[**, X, X1]
@@ -250,73 +251,6 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
         Some(Exists[λ[x => A === (x ** B)], X](ev))
     })
 
-  private[lambdacart] def stripLeadingProjection: APair[Prj[A, ?], ? :=>: B] = {
-    visit(new Visitor[APair[Prj[A, ?], ? :=>: B]] {
-      def pair[X](p: Prj[A, X], f: X :=>: B): APair[Prj[A, ?], ? :=>: B] =
-        APair[Prj[A, ?], ? :=>: B, X](p, f)
-
-      override def apply(f: Lift[A, B]) =
-        pair(Prj.Id(), f)
-
-      override def apply(f: Id[A])(implicit ev: A === B) =
-        pair(Prj.Id(), f.castB)
-
-      override def apply[X](f: Fst[B, X])(implicit ev: A === (B ** X)) =
-        pair(Prj.Fst[**, T, B, X].castA[A], Id[B])
-
-      override def apply[X](f: Snd[X, B])(implicit ev: A === (X ** B)) =
-        pair(Prj.Snd[**, T, X, B].castA[A], Id[B])
-
-      override def apply(f: Terminal[A])(implicit ev: T === B) =
-        pair(Prj.Unit(), Id[T].castB)
-
-      override def apply[X, Y](f: Prod[A, X, Y])(implicit ev: (X ** Y) === B) = {
-        val pf1 = f.f.stripLeadingProjection
-        val pf2 = f.g.stripLeadingProjection
-        val (p1, f1) = (pf1._1, pf1._2)
-        val (p2, f2) = (pf2._1, pf2._2)
-        val gcd = p1 gcd p2
-        val (r, (r1, r2)) = (gcd._1, gcd._2)
-        pair(r, (f1.afterPrj(r1) prod f2.afterPrj(r2)).castB)
-      }
-
-      override def apply(f: Sequence[A, B]) = {
-        val qt = FreeCCC.sequence(f.fs.tail).stripLeadingProjection
-        val (q, t) = (qt._1, qt._2)
-        f.fs.head.restrictResultTo(q) match {
-          case Some(h0) =>
-            val ph = h0.stripLeadingProjection
-            val (p, h) = (ph._1, ph._2)
-            pair(p, h andThen t)
-          case None =>
-            val ph = f.fs.head.stripLeadingProjection
-            val (p, h) = (ph._1, ph._2)
-            h.isId match {
-              case None => pair(p, Sequence(h +: f.fs.tail))
-              case Some(ev) => pair(p.castB(ev) andThen q, t)
-            }
-        }
-      }
-
-      override def apply[X, Y](f: Curry[A, X, Y])(implicit ev: H[X, Y] === B) = {
-        // TODO
-        pair(Prj.Id(), FreeCCC.this)
-      }
-      override def apply[X, Y](f: Uncurry[X, Y, B])(implicit ev: A === (X ** Y)) = {
-        val pg = f.f.stripLeadingProjection
-        val (p, g) = (pg._1, pg._2)
-        p.switchTerminal match {
-          case Left(ev1) => pair(Prj.Snd[**, T, X, Y].castA[A], Prod(Terminal[Y].castB(ev1), Id[Y]) andThen Uncurry(g))
-          case Right(p) => pair(Prj.par[**, T, X, Y, pg.A, Y](p, Prj.Id()).castA[A], Uncurry(g))
-        }
-      //  )
-      }
-
-      override def apply[X, Y](f: Const[A, X, Y])(implicit ev: H[X, Y] === B) =
-        pair(Prj.Unit(), Const(f.f).castB)
-    })
-  }
-
   private[FreeCCC] def stripTrailingProjection: APair[A :=>: ?, FPrj[?, B]] =
     visit(new Visitor[APair[A :=>: ?, FPrj[?, B]]] {
       def pair[X](f: A :=>: X, p: FPrj[X, B]): APair[A :=>: ?, FPrj[?, B]] = APair.of[A :=>: ?, FPrj[?, B]](f, p)
@@ -349,7 +283,7 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
           }
       }
       def apply[X, Y](f:    Curry[A, X, Y])(implicit ev:  H[X, Y] === B) = {
-        val pg = f.f.stripLeadingProjection
+        val pg = Projection.extractFrom(f.f)
         val (p, g) = (pg._1, pg._2)
         val hq = g.stripTrailingProjection
         val (h, q) = (hq._1, hq._2)
@@ -357,11 +291,11 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
           case Left(ev1) => pair(Terminal[A].castB(ev1) andThen h, q.andThen(FPrj.ExtraArg[**, T, H, Y, X]()).castB)
           case Right(p) => p.split[A, X] match {
             case Left3(p1) =>
-              pair(h afterPrj p1, q.andThen(FPrj.ExtraArg[**, T, H, Y, X]()).castB[B])
+              pair(p1 prependTo h, q.andThen(FPrj.ExtraArg[**, T, H, Y, X]()).castB[B])
             case Middle3(p12) =>
               val ((p1, p2), ev1) = (p12._1, p12._2)
               pair(
-                Curry(h afterPrj (Prj.Par[**, T, A, p12.B, p12.A, p12.B](p1, Prj.Id()).castB(ev1))),
+                Curry(Projection.Par[**, T, A, p12.B, p12.A, p12.B](p1, Projection.Id()).castB(ev1) prependTo h),
                 q.asWeakerRes[X].after(FPrj.StrongerArg(FPrj.ArgPrj(p2))).castB[B]
               )
             case Right3(p2) =>
@@ -380,7 +314,7 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
         pair(Uncurry(g.andThenFPrj(q0.andThen(q1.asStrongerArg[q012.B]))).castA[A], q2)
       }
       def apply[X, Y](f:    Const[A, X, Y])(implicit ev:  H[X, Y] === B) = {
-        val pg = f.f.stripLeadingProjection
+        val pg = Projection.extractFrom(f.f)
         val (p, g) = (pg._1, pg._2)
         val hq = g.stripTrailingProjection
         val (h, q) = (hq._1, hq._2)
@@ -472,9 +406,9 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
         }
       }
       def apply[X, Y](f: Prod[A, X, Y])(implicit ev: (X ** Y) === B) = {
-        val pf1 = f.f.stripLeadingProjection
+        val pf1 = Projection.extractFrom(f.f)
         val (p1, f1) = (pf1._1, pf1._2)
-        val pf2 = f.g.stripLeadingProjection
+        val pf2 = Projection.extractFrom(f.g)
         val (p2, f2) = (pf2._1, pf2._2)
         (p1.switchTerminal, p2.switchTerminal) match {
           case (Left(ev1), _) =>
@@ -488,12 +422,12 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
           case (Right(p1), Right(p2)) =>
             p1.toShuffle match {
               case Right(s1) =>
-                val qg2 = (s1.value.invert.toFreeCCC[:->:, T, H] andThenPrj p2).stripLeadingProjection
+                val qg2 = Projection.extractFrom(s1.value.invert.toFreeCCC[:->:, T, H] andThen p2.toFreeCCC)
                 val (q2, g2) = (qg2._1, qg2._2)
                 q2.ignoresFst[pf1.A, s1.A] match {
                   case Some(q2) =>
                     val tg1 = f1.extractLeadingShuffle
-                    val tg2 = (g2 andThen f2 afterPrj q2).extractLeadingShuffle
+                    val tg2 = (q2 prependTo g2 andThen f2).extractLeadingShuffle
                     pair(s1.value andThen Shuffle.par(tg1._1, tg2._1), parallel(tg1._2, tg2._2).castB[B])
                   case None => noShuffle
                 }
@@ -503,109 +437,6 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
       }
     })
   }
-
-  private[FreeCCC] def restrictResultToI[B0](p: Prj[B, B0]): Improvement[A :=>: B0] =
-    restrictResultTo(p) match {
-      case Some(f) => improved(f)
-      case None    => unchanged(this andThenPrj p)
-    }
-
-  private[lambdacart] def restrictResultTo[B0](p: Prj[B, B0]): Option[A :=>: B0] =
-    visit(new Visitor[Option[A :=>: B0]] { v =>
-      def apply(f: Lift[A, B]) =
-        p.isUnit map { ev => Terminal[A].castB(ev.flip) }
-
-      def apply(f: Id[A])(implicit ev: A === B) = p.isId match {
-        case Some(_) => None
-        case None => Some(p.castA[A].toFreeCCC)
-      }
-
-      def apply(f: Terminal[A])(implicit ev: T === B) = None
-
-      def apply[X](f: Fst[B, X])(implicit ev: A === (B ** X)) =
-        p.isUnit map { ev1 => Terminal[A].castB(ev1.flip) }
-
-      def apply[X](f: Snd[X, B])(implicit ev: A === (X ** B)) =
-        p.isUnit map { ev1 => Terminal[A].castB(ev1.flip) }
-
-      def apply(f: Sequence[A, B]) = (for {
-        t <- FreeCCC.sequence(f.fs.tail).restrictResultToI(p)
-        tpf = t.stripLeadingProjection
-        (tp, tf) = (tpf._1, tpf._2)
-        h <- f.fs.head.restrictResultToI(tp)
-      } yield (h andThen tf)).getImproved
-
-      def apply[X, Y](f: Prod[A, X, Y])(implicit ev: (X ** Y) === B) = {
-        p.switchTerminal match {
-          case Left(ev1) => Some(Terminal[A].castB(ev1))
-          case Right(p) => p.isId match {
-            case Some(_) => None
-            case None    => p.split[X, Y](ev.flip) match {
-              case Left3(p1) => Some(f.f.restrictResultToI(p1).value)
-              case Right3(p2) => Some(f.g.restrictResultToI(p2).value)
-              case Middle3(p12) =>
-                val ((p1, p2), ev1) = (p12._1, p12._2)
-                val f1 = f.f.restrictResultToI(p1).value
-                val f2 = f.g.restrictResultToI(p2).value
-                Some(Prod(f1, f2).castB(ev1))
-            }
-          }
-        }
-      }
-
-      def apply[X, Y](f: Curry[A, X, Y])(implicit ev: H[X, Y] === B) = p.switchTerminal match {
-        case Left(ev1) =>
-          Some(Terminal[A].castB(ev1))
-        case Right(p) =>
-          // XXX: not using p at all
-          f.f.restrictResultToI(Prj.Id()).flatMap[A :=>: B] { g =>
-            val qh = g.stripLeadingProjection
-            val (q, h) = (qh._1, qh._2)
-            q.switchTerminal match {
-              case Left(ev1) => improved(Terminal[A].andThen(h.castA(ev1).constA[X]).castB[B])
-              case Right(q) => q.split[A, X] match {
-                case Left3(q1) =>
-                  q1.isId match {
-                    case Some(_) => unchanged(g.curry[A, X].castB[B])
-                    case None => improved(h.constA[X].afterPrj(q1).castB[B])
-                  }
-                case Middle3(q12) =>
-                  val ((q1, q2), ev1) = (q12._1, q12._2)
-                  q1.isId match {
-                    case Some(_) => unchanged(g.curry[A, X].castB[B])
-                    case None =>
-                      val p1 = Prj.par[**, T, q12.A, X, q12.A, q12.B](Prj.Id[**, T, q12.A](), q2)
-                      improved((p1.castB(ev1).toFreeCCC andThen h).curry[q12.A, X].afterPrj(q1).castB[B])
-                  }
-                case Right3(q2) =>
-                  improved(Terminal() andThen Const(h.afterPrj(q2)).castB[B])
-              }
-            }
-          }.getImproved.map(_ andThenPrj p)
-      }
-
-      def apply[X, Y](f: Const[A, X, Y])(implicit ev: H[X, Y] === B) =
-        p.isUnit map { ev1 => Terminal[A].castB(ev1.flip) }
-
-      def apply[X, Y](f: Uncurry[X, Y, B])(implicit ev: A === (X ** Y)) = {
-        (f.f.restrictResultToI(Prj.Id()) flatMap[A :=>: B] { g =>
-          val qh = g.stripLeadingProjection
-          val (q, h) = (qh._1, qh._2)
-          q.isId match {
-            case Some(_) => unchanged(Uncurry(g).castA[A])
-            case None => q.switchTerminal match {
-              case Right(q) => improved(Uncurry(h).afterPrj(Prj.par(q, Prj.Id())).castA[A])
-              case Left(ev1) => improved(
-                Prod(
-                  Terminal[Y].castB(ev1) andThen h,
-                  Id[Y]
-                ).andThen(FreeCCC.eval).afterPrj(Prj.Snd[**, T, X, Y].castA[A])
-              )
-            }
-          }
-        }).getImproved.map(_.andThenPrj(p))
-      }
-    })
 
   private[FreeCCC] def strengthenInputI[A1](p: FPrj[A1, A]): Improvement[A1 :=>: B] =
     strengthenInput(p) match {
@@ -833,19 +664,13 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
     })
   }
 
-  private[FreeCCC] def andThenPrj[B0](p: Prj[B, B0]): A :=>: B0 =
+  private[lambdacart] def andThenFPrj[B0](p: FPrj[B, B0]): A :=>: B0 =
     andThen(p.toFreeCCC)
 
-  private[FreeCCC] def afterPrj[A0](p: Prj[A0, A]): A0 :=>: B =
+  private[lambdacart] def afterFPrj[A0](p: FPrj[A0, A]): A0 :=>: B =
     compose(p.toFreeCCC)
 
-  private[FreeCCC] def andThenFPrj[B0](p: FPrj[B, B0]): A :=>: B0 =
-    andThen(p.toFreeCCC)
-
-  private[FreeCCC] def afterFPrj[A0](p: FPrj[A0, A]): A0 :=>: B =
-    compose(p.toFreeCCC)
-
-  private[FreeCCC] def afterExpansion[A0](i: Expansion[A0, A]): A0 :=>: B =
+  private[lambdacart] def afterExpansion[A0](i: Expansion[A0, A]): A0 :=>: B =
     compose(i.toFreeCCC)
 }
 
@@ -1081,443 +906,6 @@ object FreeCCC {
     }
 
   /**
-   * Represents projection from a data type,
-   * namely forgetting some part of the data.
-   *
-   * During program optimization pushed to the front, i.e. as early
-   * as possible. (Don't carry around something only to ignore it later;
-   * ignore as soon as possible.)
-   */
-  sealed trait Prj[**[_,_], T, A, B] {
-    type Visitor[R] = Prj.Visitor[**, T, A, B, R]
-    type OptVisitor[R] = Prj.OptVisitor[**, T, A, B, R]
-
-    def visit[R](v: Visitor[R]): R
-
-    def castA[C](implicit ev: C === A): Prj[**, T, C, B] = ev.flip.subst[Prj[**, T, ?, B]](this)
-    def castB[C](implicit ev: B === C): Prj[**, T, A, C] = ev.subst[Prj[**, T, A, ?]](this)
-
-    def unital(implicit ev: A === T): B === T
-
-    def andThen[C](that: Prj[**, T, B, C]): Prj[**, T, A, C] =
-      this.switchTerminal match {
-        case Left(ev) => Prj.Unit().castB(that.unital(ev.flip).flip)
-        case Right(thiz) =>
-          that.switchTerminal match {
-            case Left(ev) => Prj.Unit[**, T, A].castB(ev)
-            case Right(that) => thiz andThenNT that
-          }
-      }
-
-    def after[Z](that: Prj[**, T, Z, A]): Prj[**, T, Z, B] =
-      that andThen this
-
-    def isUnit: Option[B === T] = None
-    def isId: Option[A === B] = None
-    def isFst[X, Y](implicit ev: A === (X ** Y)): Option[X === B] = None
-    def isSnd[X, Y](implicit ev: A === (X ** Y)): Option[Y === B] = None
-
-    def size: Int = visit(new Visitor[Int] {
-      def apply[Y](p: Fst[B, Y])(implicit ev: A === (B ** Y)) = 1
-      def apply[X](p: Snd[X, B])(implicit ev: A === (X ** B)) = 1
-      def apply[A1, A2, B1, B2](p: Par[A1, A2, B1, B2])(implicit ev1: A === (A1 ** A2), ev2: (B1 ** B2) === B) = 1 + p.p1.size + p.p2.size
-      def apply(p: Unit[A])(implicit ev: T === B) = 1
-      def apply(p: Id[A])(implicit ev: A === B) = 1
-      def apply[X](p: AndThen[A, X, B]) = 1 + p.p.size + p.q.size
-    })
-
-    def toFreeCCC[:=>:[_,_], :->:[_,_]]: FreeCCC[:=>:, **, T, :->:, A, B] =
-      visit(new Visitor[FreeCCC[:=>:, **, T, :->:, A, B]] {
-        def apply[Y](p: Fst[B, Y])(implicit ev: A === (B ** Y)) = FreeCCC.fst[:=>:, **, T, :->:, B, Y].castA
-        def apply[X](p: Snd[X, B])(implicit ev: A === (X ** B)) = FreeCCC.snd[:=>:, **, T, :->:, X, B].castA
-        def apply[A1, A2, B1, B2](p: Par[A1, A2, B1, B2])(implicit ev1: A === (A1 ** A2), ev2: (B1 ** B2) === B) =
-          FreeCCC.parallel(p.p1.toFreeCCC[:=>:, :->:], p.p2.toFreeCCC[:=>:, :->:]).castA[A].castB
-        def apply(p: Unit[A])(implicit ev: T === B) = FreeCCC.terminal[:=>:, **, T, :->:, A].castB
-        def apply(p: Id[A])(implicit ev: A === B) = FreeCCC.id[:=>:, **, T, :->:, A].castB
-        def apply[X](p: AndThen[A, X, B]) = FreeCCC.andThen(p.p.toFreeCCC, p.q.toFreeCCC)
-      })
-
-    /** Greatest common prefix of this projection and that projection. */
-    final def gcd[C](that: Prj[**, T, A, C]): APair[Prj[**, T, A, ?], λ[a => (Prj[**, T, a, B], Prj[**, T, a, C])]] =
-      (this.switchTerminal, that.switchTerminal) match {
-        case (Left(ev1), Left(ev2)) => gcdRet(Prj.Unit(), Prj.Id().castB(ev1), Prj.Id().castB(ev2))
-        case (Left(ev1), Right(p2)) => gcdRet(p2, Prj.Unit().castB(ev1), Prj.Id())
-        case (Right(p1), Left(ev2)) => gcdRet(p1, Prj.Id(), Prj.Unit().castB(ev2))
-        case (Right(p1), Right(p2)) =>
-          val r = p1 gcdNT p2
-          gcdRet(r._1, r._2._1, r._2._2)
-      }
-
-    def ignoresSnd[X, Y](implicit ev: (X ** Y) === A): Option[Prj[**, T, X, B]] = {
-      val gcd = this.castA(ev) gcd Prj.Fst[**, T, X, Y]
-      val (common, (rest, _)) = (gcd._1, gcd._2)
-      common.isFst[X, Y] map (ev1 => rest.castA(ev1))
-    }
-
-    def ignoresFst[X, Y](implicit ev: (X ** Y) === A): Option[Prj[**, T, Y, B]] = {
-      val gcd = this.castA(ev) gcd Prj.Snd[**, T, X, Y]
-      val (common, (rest, _)) = (gcd._1, gcd._2)
-      common.isSnd[X, Y] map (ev1 => rest.castA(ev1))
-    }
-
-    private def gcdRet[X, C](p: Prj[**, T, A, X], q: Prj[**, T, X, B], r: Prj[**, T, X, C]) =
-      APair[Prj[**, T, A, ?], λ[a => (Prj[**, T, a, B], Prj[**, T, a, C])], X](p, (q, r))
-
-    private[Prj] implicit class ProductLeibnizOps[X1, X2, Y1, Y2](ev: (X1 ** X2) === (Y1 ** Y2)) {
-      def fst: X1 === Y1 = Leibniz.force[Nothing, Any, X1, Y1]
-      def snd: X2 === Y2 = Leibniz.force[Nothing, Any, X2, Y2]
-    }
-
-    def switchTerminal: (T === B) Either Prj.NonTerminal[**, T, A, B]
-  }
-
-  object Prj {
-
-    sealed trait NonTerminal[**[_,_], T, A, B] extends Prj[**, T, A, B] {
-      def andThenNT[C](that: NonTerminal[**, T, B, C]): NonTerminal[**, T, A, C] =
-        (this.isId map {
-          ev => that.castA(ev)
-        }) orElse (that.isId map {
-          ev => this.castB(ev)
-        }) orElse this.visit(new this.OptVisitor[NonTerminal[**, T, A, C]] {
-          // TODO handle anything ending in product type, not just Par
-          override def apply[A1, A2, B1, B2](p: Par[A1, A2, B1, B2])(implicit
-              ev1: A === (A1 ** A2), ev2: (B1 ** B2) === B) =
-            (that.isFst[B1, B2](ev2.flip) map {
-              ev => (Fst[A1, A2] andThenNT p.p1).castA(ev1).castB(ev)
-            }) orElse (that.isSnd[B1, B2](ev2.flip) map {
-              ev => (Snd[A1, A2] andThenNT p.p2).castA(ev1).castB(ev)
-            })
-        }) getOrElse (
-          Prj.AndThen(this, that)
-        )
-
-      final def gcdNT[C](that: NonTerminal[**, T, A, C]): APair[NonTerminal[**, T, A, ?], λ[a => (NonTerminal[**, T, a, B], NonTerminal[**, T, a, C])]] = {
-        type τ[X, Y] = NonTerminal[**, T, X, Y]
-
-        def ret[X, P, Y, Z](p: τ[X, P], q1: τ[P, Y], q2: τ[P, Z]) =
-          APair[τ[X, ?], λ[a => (τ[a, Y], τ[a, Z])], P](p, (q1, q2))
-
-        def flipRet[X, Y, Z](r: APair[τ[X, ?], λ[a => (τ[a, Y], τ[a, Z])]]): APair[τ[X, ?], λ[a => (τ[a, Z], τ[a, Y])]] =
-          APair.of[τ[X, ?], λ[a => (τ[a, Z], τ[a, Y])]](r._1, (r._2._2, r._2._1))
-
-        def seq[X, Y](ps: AList[τ, X, Y]): τ[X, Y] = ps match {
-          case ev @ ANil() => Prj.Id[**, T, X].castB(ev.leibniz)
-          case ACons(h, t) => h andThenNT seq(t)
-        }
-
-        def go[X, Y, Z](ps: AList[τ, X, Y], qs: AList[τ, X, Z]): APair[τ[X, ?], λ[a => (τ[a, Y], τ[a, Z])]] =
-          ps match {
-            case ev @ ANil() => ret(Prj.Id[**, T, X], Prj.Id[**, T, X].castB(ev.leibniz), seq(qs))
-            case ps @ ACons(ph, pt) => qs match {
-              case ev @ ANil() => ret(Prj.Id[**, T, X], seq(ps), Prj.Id[**, T, X].castB(ev.leibniz))
-              case qs @ ACons(qh, qt) =>
-                ph.visit(new ph.Visitor[APair[τ[X, ?], λ[a => (τ[a, Y], τ[a, Z])]]] {
-                  def apply(p: Unit[X])(implicit ev: T === ps.Joint) = sys.error("NonTerminal cannot be Unit")
-                  def apply(p: Id[X])(implicit ev: X === ps.Joint) = go[X, Y, Z](ev.flip.subst[AList[τ, ?, Y]](pt), qs)
-                  def apply[P](p: AndThen[X, P, ps.Joint]) = go(p.p :: p.q :: pt, qs)
-                  def apply[Q](p: Fst[ps.Joint, Q])(implicit ev: X === (ps.Joint ** Q)) =
-                    qh.visit(new qh.Visitor[APair[τ[X, ?], λ[a => (τ[a, Y], τ[a, Z])]]] {
-                      def apply(q: Unit[X])(implicit ev: T === qs.Joint) = sys.error("NonTerminal cannot be Unit")
-                      def apply(q: Id[X])(implicit ev: X === qs.Joint) = go[X, Y, Z](ps, ev.flip.subst[AList[τ, ?, Z]](qt))
-                      def apply[U](q: AndThen[X, U, qs.Joint]) = go(ps, q.p :: q.q :: qt)
-                      def apply[V](q: Fst[qs.Joint, V])(implicit ev: X === (qs.Joint ** V)) = {
-                        val r = go[qs.Joint, Y, Z](pt, qt) // compiler bug that this passes without casting pt
-                        ret(Fst[qs.Joint, V].castA[X] andThenNT r._1, r._2._1, r._2._2)
-                      }
-                      def apply[U](q: Snd[U, qs.Joint])(implicit ev1: X === (U ** qs.Joint)) = {
-                        implicit val ev2: X === (ps.Joint ** qs.Joint) = (ev.flip andThen ev1).snd.subst[λ[q => X === (ps.Joint ** q)]](ev)
-                        ret[X, Y ** Z, Y, Z](Prj.par(seq(pt), seq(qt)).castA[X], Fst[Y, Z], Snd[Y, Z])
-                      }
-                      def apply[A1, A2, B1, B2](q: Par[A1, A2, B1, B2])(implicit ev1: X === (A1 ** A2), ev2: (B1 ** B2) === qs.Joint) =
-                        flipRet(go(qs, ps))
-                    })
-                  def apply[P](p: Snd[P, ps.Joint])(implicit ev: X === (P ** ps.Joint)) =
-                    qh.visit(new qh.Visitor[APair[τ[X, ?], λ[a => (τ[a, Y], τ[a, Z])]]] {
-                      def apply(q: Unit[X])(implicit ev: T === qs.Joint) = sys.error("NonTerminal cannot be Unit")
-                      def apply(q: Id[X])(implicit ev: X === qs.Joint) = go[X, Y, Z](ps, ev.flip.subst[AList[τ, ?, Z]](qt))
-                      def apply[U](q: AndThen[X, U, qs.Joint]) = go(ps, q.p :: q.q :: qt)
-                      def apply[V](q: Fst[qs.Joint, V])(implicit ev1: X === (qs.Joint ** V)) = {
-                        implicit val ev2: X === (qs.Joint ** ps.Joint) = (ev1.flip andThen ev).snd.subst[λ[v => X === (qs.Joint ** v)]](ev1)
-                        ret[X, Z ** Y, Y, Z](Prj.par(seq(qt), seq(pt)).castA[X], Snd[Z, Y], Fst[Z, Y])
-                      }
-                      def apply[U](q: Snd[U, qs.Joint])(implicit ev: X === (U ** qs.Joint)) = {
-                        val r = go[qs.Joint, Y, Z](pt, qt) // compiler bug that this passes without casting pt
-                        ret(Snd[U, qs.Joint].castA[X] andThenNT r._1, r._2._1, r._2._2)
-                      }
-                      def apply[A1, A2, B1, B2](q: Par[A1, A2, B1, B2])(implicit ev1: X === (A1 ** A2), ev2: (B1 ** B2) === qs.Joint) =
-                        flipRet(go(qs, ps))
-                    })
-                  def apply[A1, A2, B1, B2](p: Par[A1, A2, B1, B2])(implicit ev1: X === (A1 ** A2), ev2: (B1 ** B2) === ps.Joint) =
-                    seq(pt).split[B1, B2](ev2.flip) match {
-                      case Left3(pt1)  => go(Fst[A1, A2].castA[X] :: p.p1 :: AList(pt1), qs)
-                      case Right3(pt2) => go(Snd[A1, A2].castA[X] :: p.p2 :: AList(pt2), qs)
-                      case Middle3(pt12) =>
-                        val ((pt1, pt2), ev3) = (pt12._1, pt12._2)
-                        val p1 = p.p1 andThenNT pt1
-                        val p2 = p.p2 andThenNT pt2
-                        qh.visit(new qh.Visitor[APair[τ[X, ?], λ[a => (τ[a, Y], τ[a, Z])]]] {
-                          def apply(q: Unit[X])(implicit ev: T === qs.Joint) = sys.error("NonTerminal cannot be Unit")
-                          def apply(q: Id[X])(implicit ev: X === qs.Joint) = go[X, Y, Z](ps, ev.flip.subst[AList[τ, ?, Z]](qt))
-                          def apply[U](q: AndThen[X, U, qs.Joint]) = go(ps, q.p :: q.q :: qt)
-                          def apply[V](q: Fst[qs.Joint, V])(implicit ev: X === (qs.Joint ** V)) = {
-                            val r1pq = p1 gcdNT seq(qt).castA[A1](ev1.flip.andThen(ev).fst)
-                            val (r1, (r1p, r1q)) = (r1pq._1, r1pq._2)
-                            ret(Prj.par(r1, p2).castA(ev1), Prj.par(r1p, Id[pt12.B]).castB(ev3), Fst[r1pq.A, pt12.B] andThenNT r1q)
-                          }
-                          def apply[U](q: Snd[U, qs.Joint])(implicit ev: X === (U ** qs.Joint)) = {
-                            val r2pq = p2 gcdNT seq(qt).castA[A2](ev1.flip.andThen(ev).snd)
-                            val (r2, (r2p, r2q)) = (r2pq._1, r2pq._2)
-                            ret(Prj.par(p1, r2).castA(ev1), Prj.par(Id[pt12.A], r2p).castB(ev3), Snd[pt12.A, r2pq.A] andThenNT r2q)
-                          }
-                          def apply[C1, C2, D1, D2](q: Par[C1, C2, D1, D2])(implicit ev4: X === (C1 ** C2), ev5: (D1 ** D2) === qs.Joint) =
-                            seq(qt).split[D1, D2](ev5.flip) match {
-                              case Left3(qt1)  => go(ps, Fst[C1, C2].castA(ev4) :: q.p1 :: AList(qt1))
-                              case Right3(qt2) => go(ps, Snd[C1, C2].castA(ev4) :: q.p2 :: AList(qt2))
-                              case Middle3(qt12) =>
-                                val ((qt1, qt2), ev6) = (qt12._1, qt12._2)
-                                val q1 = q.p1 andThenNT qt1
-                                val q2 = q.p2 andThenNT qt2
-                                val r1pq = p1 gcdNT q1.castA[A1](ev1.flip.andThen(ev4).fst)
-                                val r2pq = p2 gcdNT q2.castA[A2](ev1.flip.andThen(ev4).snd)
-                                val (r1, (r1p, r1q)) = (r1pq._1, r1pq._2)
-                                val (r2, (r2p, r2q)) = (r2pq._1, r2pq._2)
-                                ret(Prj.par(r1, r2).castA(ev1), Prj.par(r1p, r2p).castB(ev3), Prj.par(r1q, r2q).castB(ev6))
-                            }
-                        })
-                    }
-                })
-            }
-          }
-        go[A, B, C](AList(this), AList(that))
-      }
-
-      /** Helper to create return value for [[#gcd]]. */
-      private[Prj] def gcdRet[X, C](p: NonTerminal[**, T, A, X], q: NonTerminal[**, T, X, B], r: NonTerminal[**, T, X, C]) =
-        APair[NonTerminal[**, T, A, ?], λ[a => (NonTerminal[**, T, a, B], NonTerminal[**, T, a, C])], X](p, (q, r))
-
-      /** Helper to create return value for [[#gcd]] that represents no (non-trivial) common prefix. */
-      private[Prj] def noGcd[C](that: NonTerminal[**, T, A, C]): APair[NonTerminal[**, T, A, ?], λ[a => (NonTerminal[**, T, a, B], NonTerminal[**, T, a, C])]] =
-        gcdRet(Prj.Id[**, T, A], this, that)
-
-      private[Prj] def gcdFlip[C](that: NonTerminal[**, T, A, C]): APair[NonTerminal[**, T, A, ?], λ[a => (NonTerminal[**, T, a, C], NonTerminal[**, T, a, B])]] = {
-        val x = gcdNT(that)
-        that.gcdRet(x._1, x._2._2, x._2._1)
-      }
-
-      def switchTerminal: (T === B) Either NonTerminal[**, T, A, B] = Right(this)
-
-      override def castA[A0](implicit ev: A0 === A): NonTerminal[**, T, A0, B] =
-        ev.flip.subst[NonTerminal[**, T, ?, B]](this)
-
-      override def castB[B1](implicit ev: B === B1): NonTerminal[**, T, A, B1] =
-        ev.subst[NonTerminal[**, T, A, ?]](this)
-
-      /**
-       * Deconstructs a projection from product type.
-       * If this projection discards the second part,
-       * returns the remaining projection from the first part (in `Left3`).
-       * If this projection discards the first part,
-       * returns the remaining projection from the second part (in `Right3`).
-       * Otherwise, decomposes into projections from each of the two parts (returned in `Middle3`).
-       */
-      def split[A1, A2](implicit ev: A === (A1 ** A2)): Either3[
-        NonTerminal[**, T, A1, B],
-        A2Pair[
-          λ[(b1, b2) => (NonTerminal[**, T, A1, b1], NonTerminal[**, T, A2, b2])],
-          λ[(b1, b2) => (b1 ** b2) === B]
-        ],
-        NonTerminal[**, T, A2, B]
-      ]
-
-      /** Helper to create return value for [[#split]]. */
-      private[Prj] def splitRet[A1, A2, B1, B2](p1: NonTerminal[**, T, A1, B1], p2: NonTerminal[**, T, A2, B2])(implicit ev: (B1 ** B2) === B) =
-        A2Pair[
-          λ[(b1, b2) => (NonTerminal[**, T, A1, b1], NonTerminal[**, T, A2, b2])],
-          λ[(b1, b2) => (b1 ** b2) === B],
-          B1, B2
-        ]((p1, p2), ev)
-
-      /**
-       * Permutes input `A` into parts `B ** Y`, for some `Y`.
-       * If this projection is an identity projection, returns evidence that `A` = `B`.
-       */
-      def toShuffle: Either[A === B, Exists[λ[y => Shuffle[**, A, B ** y]]]]
-
-      protected def shuffle[Y](s: Shuffle[**, A, B ** Y]): Exists[λ[y => Shuffle[**, A, B ** y]]] =
-        Exists[λ[y => Shuffle[**, A, B ** y]], Y](s)
-    }
-
-    case class Fst[**[_,_], T, A, B]() extends NonTerminal[**, T, A ** B, A] {
-      def visit[R](v: Visitor[R]): R = v(this)
-
-      def deriveLeibniz[X, Y](implicit ev: (A ** B) === (X ** Y)): A === X =
-        Leibniz.force[Nothing, Any, A, X]
-
-      def unital(implicit ev: (A ** B) === T): A === T =
-        sys.error("impossible")
-
-      override def isFst[X, Y](implicit ev: (A ** B) === (X ** Y)): Option[X === A] =
-        Some(ev.fst.flip)
-
-      def split[A1, A2](implicit ev: (A ** B) === (A1 ** A2)) =
-        Left3(Id().castB(ev.fst.flip))
-
-      def toShuffle: Either[(A ** B) === A, Exists[λ[y => Shuffle[**, A ** B, A ** y]]]] =
-        Right(shuffle(Shuffle.Id[**, A ** B]()))
-    }
-
-    case class Snd[**[_,_], T, A, B]() extends NonTerminal[**, T, A ** B, B] {
-      def visit[R](v: Visitor[R]): R = v(this)
-
-      def deriveLeibniz[X, Y](implicit ev: (A ** B) === (X ** Y)): B === Y =
-        Leibniz.force[Nothing, Any, B, Y]
-
-      def unital(implicit ev: (A ** B) === T): B === T =
-        sys.error("impossible")
-
-      override def isSnd[X, Y](implicit ev: (A ** B) === (X ** Y)): Option[Y === B] =
-        Some(ev.snd.flip)
-
-      def split[A1, A2](implicit ev: (A ** B) === (A1 ** A2)) =
-        Right3(Id().castB(ev.snd.flip))
-
-      def toShuffle: Either[(A ** B) === B, Exists[λ[y => Shuffle[**, A ** B, B ** y]]]] =
-        Right(shuffle(Shuffle.Swap[**, A, B]()))
-    }
-
-    case class Par[**[_,_], T, A1, A2, B1, B2](p1: NonTerminal[**, T, A1, B1], p2: NonTerminal[**, T, A2, B2]) extends NonTerminal[**, T, A1 ** A2, B1 ** B2] {
-      def visit[R](v: Visitor[R]): R = v(this)
-
-      def unital(implicit ev: (A1 ** A2) === T): (B1 ** B2) === T =
-        sys.error("impossible")
-
-      def split[X1, X2](implicit ev: (A1 ** A2) === (X1 ** X2)) =
-        Middle3(splitRet(p1.castA(ev.fst.flip), p2.castA(ev.snd.flip)))
-
-      def toShuffle: Either[(A1 ** A2) === (B1 ** B2), Exists[λ[y => Shuffle[**, A1 ** A2, (B1 ** B2) ** y]]]] =
-        (p1.toShuffle, p2.toShuffle) match {
-          case (Left(ev1), Left(ev2)) =>
-            Left(ev1 lift2[**] ev2)
-          case (Left(ev1), Right(s2)) =>
-            Right(shuffle[s2.A](Shuffle.par(Shuffle.Id[**, A1]().castB(ev1), s2.value) andThen Shuffle.AssocRL()))
-          case (Right(s1), Left(ev2)) =>
-            Right(shuffle[s1.A](
-              Shuffle.par(s1.value, Shuffle.Id[**, A2]().castB(ev2)) andThen
-              Shuffle.AssocLR() andThen
-              Shuffle.par(Shuffle.Id(), Shuffle.Swap()) andThen
-              Shuffle.AssocRL()
-            ))
-          case (Right(s1), Right(s2)) =>
-            Right(shuffle[s1.A ** s2.A](
-              Shuffle.par(s1.value, s2.value) andThen
-              Shuffle.AssocLR() andThen
-              Shuffle.par(
-                Shuffle.Id(),
-                Shuffle.AssocRL() andThen Shuffle.par(Shuffle.Swap[**, s1.A, B2](), Shuffle.Id[**, s2.A]()) andThen Shuffle.AssocLR()
-              ) andThen
-              Shuffle.AssocRL()
-            ))
-        }
-    }
-
-    case class Unit[**[_,_], T, A]() extends Prj[**, T, A, T] {
-      def visit[R](v: Visitor[R]): R = v(this)
-
-      def unital(implicit ev: A === T): T === T =
-        implicitly
-
-      override def isUnit: Option[T === T] = Some(implicitly)
-      def switchTerminal: (T === T) Either NonTerminal[**, T, A, T] = Left(implicitly)
-    }
-
-    case class Id[**[_,_], T, A]() extends NonTerminal[**, T, A, A] {
-      def visit[R](v: Visitor[R]): R = v(this)
-
-      def unital(implicit ev: A === T): A === T =
-        ev
-
-      override def isId: Option[A === A] = Some(implicitly)
-
-      def split[A1, A2](implicit ev: A === (A1 ** A2)) =
-        Middle3(splitRet(Id[**, T, A1](), Id[**, T, A2]())(ev.flip))
-
-      def toShuffle: Either[A === A, Exists[λ[y => Shuffle[**, A, A ** y]]]] =
-        Left(implicitly)
-    }
-
-    case class AndThen[**[_,_], T, A, B, C](p: NonTerminal[**, T, A, B], q: NonTerminal[**, T, B, C]) extends NonTerminal[**, T, A, C] {
-      def visit[R](v: Visitor[R]): R = v(this)
-
-      def unital(implicit ev: A === T): C === T =
-        q.unital(p.unital)
-
-      def split[A1, A2](implicit ev: A === (A1 ** A2)) =
-        p.split[A1, A2] match {
-          case Left3(p) => Left3(AndThen(p, q))
-          case Right3(p) => Right3(AndThen(p, q))
-          case Middle3(p12) =>
-            val ((p1, p2), ev) = (p12._1, p12._2)
-            q.castA(ev).split[p12.A, p12.B] match {
-              case Left3(q) => Left3(AndThen(p1, q))
-              case Right3(q) => Right3(AndThen(p2, q))
-              case Middle3(q12) => Middle3(splitRet(AndThen(p1, q12._1._1), AndThen(p2, q12._1._2))(q12._2))
-            }
-        }
-
-      def toShuffle: Either[A === C, Exists[λ[y => Shuffle[**, A, C ** y]]]] =
-        p.toShuffle match {
-          case Left(ev) => q.castA(ev).toShuffle
-          case Right(s) => q.toShuffle match {
-            case Left(ev) => Right(ev.subst[λ[α => Exists[λ[y => Shuffle[**, A, α ** y]]]]](s))
-            case Right(t) => Right(shuffle[t.A ** s.A](s.value andThen Shuffle.par(t.value, Shuffle.Id()) andThen Shuffle.AssocLR()))
-          }
-        }
-    }
-
-    trait Visitor[**[_,_], T, A, B, R] {
-      type π[X, Y] = Prj[**, T, X, Y]
-      type Π[X, Y] = Prj.NonTerminal[**, T, X, Y]
-
-      type Fst[X, Y] = Prj.Fst[**, T, X, Y]
-      type Snd[X, Y] = Prj.Snd[**, T, X, Y]
-      type Par[X1, X2, Y1, Y2] = Prj.Par[**, T, X1, X2, Y1, Y2]
-      type Unit[X] = Prj.Unit[**, T, X]
-      type Id[X] = Prj.Id[**, T, X]
-      type AndThen[X, Y, Z] = Prj.AndThen[**, T, X, Y, Z]
-
-      def Fst[X, Y]                                         : Fst[X, Y]           = Prj.Fst()
-      def Snd[X, Y]                                         : Snd[X, Y]           = Prj.Snd()
-      def Par[X1, X2, Y1, Y2](p1: Π[X1, Y1], p2: Π[X2, Y2]) : Par[X1, X2, Y1, Y2] = Prj.Par(p1, p2)
-      def Unit[X]                                           : Unit[X]             = Prj.Unit()
-      def Id[X]                                             : Id[X]               = Prj.Id()
-      def AndThen[X, Y, Z](p: Π[X, Y], q: Π[Y, Z])          : AndThen[X, Y, Z]    = Prj.AndThen(p, q)
-
-      def apply[Y](p: Fst[B, Y])(implicit ev: A === (B ** Y)): R
-      def apply[X](p: Snd[X, B])(implicit ev: A === (X ** B)): R
-      def apply[A1, A2, B1, B2](p: Par[A1, A2, B1, B2])(implicit ev1: A === (A1 ** A2), ev2: (B1 ** B2) === B): R
-      def apply(p: Unit[A])(implicit ev: T === B): R
-      def apply(p: Id[A])(implicit ev: A === B): R
-      def apply[X](p: AndThen[A, X, B]): R
-    }
-
-    trait OptVisitor[**[_,_], T, A, B, R] extends Visitor[**, T, A, B, Option[R]] {
-      def apply[Y](p: Fst[B, Y])(implicit ev: A === (B ** Y)) = Option.empty[R]
-      def apply[X](p: Snd[X, B])(implicit ev: A === (X ** B)) = Option.empty[R]
-      def apply[A1, A2, B1, B2](p: Par[A1, A2, B1, B2])(implicit ev1: A === (A1 ** A2), ev2: (B1 ** B2) === B) = Option.empty[R]
-      def apply(p: Unit[A])(implicit ev: T === B) = Option.empty[R]
-      def apply(p: Id[A])(implicit ev: A === B) = Option.empty[R]
-      def apply[X](p: AndThen[A, X, B]) = Option.empty[R]
-    }
-
-    def par[**[_,_], T, A1, A2, B1, B2](p1: NonTerminal[**, T, A1, B1], p2: NonTerminal[**, T, A2, B2]): NonTerminal[**, T, A1 ** A2, B1 ** B2] =
-      (p1.isId, p2.isId) match {
-        case (Some(ev1), Some(ev2)) => Id[**, T, A1 ** A2]().castB(ev1 lift2[**] ev2)
-        case _ => Par(p1, p2)
-      }
-  }
-
-  /**
    * Represents projection of an arrow type.
    * The result of such projection is an arrow that takes more/bigger
    * inputs than it needs or, if its output is again an arrow type,
@@ -1722,7 +1110,7 @@ object FreeCCC {
 
       def toFreeCCC[:=>:[_,_]]: FreeCCC[:=>:, **, T, ->, A1, A]
     }
-    case class WrapPrj[**[_,_], T, ->[_,_], A1, A](p: Prj[**, T, A1, A]) extends ArgPrj[**, T, ->, A1, A] {
+    case class WrapPrj[**[_,_], T, ->[_,_], A1, A](p: Projection[**, T, A1, A]) extends ArgPrj[**, T, ->, A1, A] {
       def toFreeCCC[:=>:[_,_]]: FreeCCC[:=>:, **, T, ->, A1, A] = p.toFreeCCC[:=>:, ->]
     }
     case class WrapFPrj[**[_,_], T, ->[_,_], A1, A](p: FPrj[**, T, ->, A1, A]) extends ArgPrj[**, T, ->, A1, A] {
@@ -1740,7 +1128,7 @@ object FreeCCC {
     }
 
     object ArgPrj {
-      def apply[**[_,_], T, ->[_,_], A1, A](p: Prj[**, T, A1, A]): ArgPrj[**, T, ->, A1, A] = WrapPrj(p)
+      def apply[**[_,_], T, ->[_,_], A1, A](p: Projection[**, T, A1, A]): ArgPrj[**, T, ->, A1, A] = WrapPrj(p)
       def apply[**[_,_], T, ->[_,_], A1, A](p: FPrj[**, T, ->, A1, A]): ArgPrj[**, T, ->, A1, A] = WrapFPrj(p)
     }
 
@@ -2163,16 +1551,6 @@ object FreeCCC {
     }
   }
 
-  import scalaz.Writer
-  import scalaz.@@
-  import scalaz.Tags.Disjunction
-  type Improvement[A] = Writer[Boolean @@ Disjunction, A]
-  def improved[A](a: A) = Writer(Disjunction(true), a)
-  def unchanged[A](a: A) = Writer(Disjunction(false), a)
-  implicit class ImprovementOps[A](i: Improvement[A]) {
-    def getImproved: Option[A] = if(Disjunction.unwrap(i.run._1)) Some(i.run._2) else None
-  }
-
   implicit def cccInstance[:->:[_, _], &[_, _], T, H[_, _]]: CCC.Aux[FreeCCC[:->:, &, T, H, ?, ?], &, T, H] =
     new CCC[FreeCCC[:->:, &, T, H, ?, ?]] {
       type **[A, B] = A & B
@@ -2269,7 +1647,6 @@ object FreeCCC {
   }
 
   private[FreeCCC] def genericRules[:->:[_, _], **[_, _], T, H[_, _]]: RewriteRule[:->:, **, T, H] = {
-    type       RewriteRule = FreeCCC.      RewriteRule[:->:, **, T, H]
     type ClosedRewriteRule = FreeCCC.ClosedRewriteRule[:->:, **, T, H]
 
     RewriteRule.sequence[:->:, **, T, H](
@@ -2277,7 +1654,7 @@ object FreeCCC {
       // Perform projections as soon as possible.
       // That is, don't carry along something that will not be used.
       // Forget it as soon as possible.
-      ν[ClosedRewriteRule].rewrite[A, B](_.restrictResultTo(Prj.Id())),
+      ν[ClosedRewriteRule].rewrite[A, B](Projection.restrictResult(_)(Projection.Id())),
 
       ν[ClosedRewriteRule].rewrite[A, B](_.deferExpansion(Expansion.Id())),
 
