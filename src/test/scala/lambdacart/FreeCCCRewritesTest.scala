@@ -2,7 +2,6 @@ package lambdacart
 
 import org.scalatest.FunSuite
 import lambdacart.util.typealigned.AList1
-import FreeCCC.Shuffle
 import lambdacart.{Projection => Prj}
 
 class FreeCCCRewritesTest extends FunSuite {
@@ -299,7 +298,7 @@ class FreeCCCRewritesTest extends FunSuite {
     val f: (X, Y) :=>: (Y, X) =
       prod(snd, fst)
 
-    val sg = f.extractLeadingShuffle
+    val sg = Shuffle.extractFrom(f)
 
     assert(sg._1 == Shuffle.Swap())
   }
@@ -317,7 +316,7 @@ class FreeCCCRewritesTest extends FunSuite {
         )
       )
 
-    val sg = f.extractLeadingShuffle
+    val sg = Shuffle.extractFrom(f)
 
     assert(sg._1 == Shuffle.Swap())
   }
@@ -332,7 +331,7 @@ class FreeCCCRewritesTest extends FunSuite {
           )
       )
 
-    val sg = f.extractLeadingShuffle
+    val sg = Shuffle.extractFrom(f)
 
     assert(sg._1 == Shuffle.Swap())
   }
@@ -347,7 +346,7 @@ class FreeCCCRewritesTest extends FunSuite {
         )
       )
 
-    val sg = f.extractLeadingShuffle
+    val sg = Shuffle.extractFrom(f)
     val (s, g) = (sg._1, sg._2)
 
     assert(s == Shuffle.AssocLR())
@@ -363,7 +362,7 @@ class FreeCCCRewritesTest extends FunSuite {
         snd[X, (Y, Z)] andThen snd
       )
 
-    val sg = f.extractLeadingShuffle
+    val sg = Shuffle.extractFrom(f)
     val (s, g) = (sg._1, sg._2)
 
     assert(s == Shuffle.AssocRL())
@@ -376,7 +375,7 @@ class FreeCCCRewritesTest extends FunSuite {
         andThen(snd[X, (Y, Z)], prod(snd[Y, Z], fst[Y, Z]))
       )
 
-    val sg = f.extractLeadingShuffle
+    val sg = Shuffle.extractFrom(f)
     val (s, g) = (sg._1, sg._2)
 
     val s0: Shuffle[**, X ** (Y ** Z), X ** (Z ** Y)] =
@@ -395,7 +394,7 @@ test("extract leading shuffle from prod(snd >>> fst, prod(fst, snd >>> snd))") {
       )
     )
 
-  val sg = f.extractLeadingShuffle
+  val sg = Shuffle.extractFrom(f)
   val (s, g) = (sg._1, sg._2)
 
   val s0: Shuffle[**, X ** (Y ** Z), Y ** (X ** Z)] =
@@ -418,7 +417,7 @@ test("extract leading shuffle from prod(snd >>> fst, prod(fst, snd >>> snd))") {
       )
 
     val f1Opt: Option[((X ** (Y ** U)) ** Z) :=>: (X ** (Y ** Z))] =
-      f.shuffleResult(Shuffle.AssocLR())
+      Shuffle.shuffleResult(f)(Shuffle.AssocLR())
 
     val f0: ((X ** (Y ** U)) ** Z) :=>: (X ** (Y ** Z)) =
       prod(

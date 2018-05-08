@@ -130,7 +130,6 @@ sealed trait Projection[**[_,_], T, A, B] {
 }
 
 object Projection {
-  import FreeCCC.Shuffle
 
   sealed trait NonTerminal[**[_,_], T, A, B] extends Projection[**, T, A, B] {
     def visitNT[R](v: VisitorNT[R]): R
