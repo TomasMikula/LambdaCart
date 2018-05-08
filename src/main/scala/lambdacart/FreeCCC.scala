@@ -30,8 +30,8 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
   /** Workaround for Scala's broken GADT pattern matching. */
   def visit[R](v: Visitor[R]): R
 
-  def castA[X](implicit ev: A === X): FreeCCC[:->:, **, T, H, X, B] =
-    ev.subst[FreeCCC[:->:, **, T, H, ?, B]](this)
+  def castA[X](implicit ev: X === A): FreeCCC[:->:, **, T, H, X, B] =
+    ev.flip.subst[FreeCCC[:->:, **, T, H, ?, B]](this)
 
   def castB[Y](implicit ev: B === Y): FreeCCC[:->:, **, T, H, A, Y] =
     ev.subst[FreeCCC[:->:, **, T, H, A, ?]](this)
@@ -55,7 +55,7 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
     this andThen that
 
   def curry[X, Y](implicit ev: A === (X ** Y)): FreeCCC[:->:, **, T, H, X, H[Y, B]] =
-    FreeCCC.curry(this.castA(ev))
+    FreeCCC.curry(this.castA(ev.flip))
 
   def uncurry[X, Y](implicit ev: B === H[X, Y]): FreeCCC[:->:, **, T, H, A**X, Y] =
     FreeCCC.uncurry(this.castB(ev))
@@ -75,13 +75,13 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
       def apply      (f:       Lift[A, B]) = φ[A, B](f.f)
       def apply      (f:   Sequence[A, B]) = f.fs.foldMap(ν[:=>: ~~> ->][α, β](_.foldMap(φ)))
       def apply      (f:            Id[A])(implicit ev:        A === B) = ev.lift[A -> ?](ccc.id[A])
-      def apply[X]   (f:        Fst[B, X])(implicit ev: (B ** X) === A) = ev.lift[? -> B](ccc.fst[B, X])
-      def apply[X]   (f:        Snd[X, B])(implicit ev: (X ** B) === A) = ev.lift[? -> B](ccc.snd[X, B])
+      def apply[X]   (f:        Fst[B, X])(implicit ev: A === (B ** X)) = ev.flip.lift[? -> B](ccc.fst[B, X])
+      def apply[X]   (f:        Snd[X, B])(implicit ev: A === (X ** B)) = ev.flip.lift[? -> B](ccc.snd[X, B])
       def apply      (f:      Terminal[A])(implicit ev:        T === B) = ev.lift[A -> ?](ccc.terminal[A])
       def apply[X, Y](f:    Prod[A, X, Y])(implicit ev: (X ** Y) === B) = ev.lift[A -> ?](ccc.prod(f.f.foldMap(φ), f.g.foldMap(φ)))
       def apply[X, Y](f:   Curry[A, X, Y])(implicit ev:  H[X, Y] === B) = ev.lift[A -> ?](ccc.curry(f.f.foldMap(φ)))
       def apply[X, Y](f:   Const[A, X, Y])(implicit ev:  H[X, Y] === B) = ev.lift[A -> ?](ccc.const(f.f.foldMap(φ)))
-      def apply[X, Y](f: Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) = ev.lift[? -> B](ccc.uncurry(f.f.foldMap(φ)))
+      def apply[X, Y](f: Uncurry[X, Y, B])(implicit ev: A === (X ** Y)) = ev.flip.lift[? -> B](ccc.uncurry(f.f.foldMap(φ)))
     })
 
   final def fold(implicit ccc: CCC.Aux[:->:, **, T, H]): A :->: B =
@@ -94,10 +94,10 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
     def apply      (a:    Sequence[A, B]) = 1 + a.fs.sum(Λ[α, β](_.size): :=>: ~~> λ[(χ, υ) => Int])
     def apply[X, Y](a:    Const[A, X, Y])(implicit ev:  H[X, Y] === B) = 1 + a.f.size
     def apply[Y, Z](a:    Curry[A, Y, Z])(implicit ev:  H[Y, Z] === B) = 1 + a.f.size
-    def apply[X, Y](a:  Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) = 1 + a.f.size
+    def apply[X, Y](a:  Uncurry[X, Y, B])(implicit ev: A === (X ** Y)) = 1 + a.f.size
     def apply[Y, Z](a:     Prod[A, Y, Z])(implicit ev:   (Y**Z) === B) = 1 + a.f.size + a.g.size
-    def apply[Y]   (a:      Fst[B, Y])   (implicit ev:   (B**Y) === A) = 1
-    def apply[X]   (a:      Snd[X, B])   (implicit ev:   (X**B) === A) = 1
+    def apply[Y]   (a:      Fst[B, Y])   (implicit ev:   A === (B**Y)) = 1
+    def apply[X]   (a:      Snd[X, B])   (implicit ev:   A === (X**B)) = 1
     def apply      (a:       Id[A])      (implicit ev:        A === B) = 1
     def apply      (a: Terminal[A])      (implicit ev:        T === B) = 1
     def apply      (a:     Lift[A, B])                                 = 1
@@ -110,10 +110,10 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
     }
     def apply[X, Y](a:    Const[A, X, Y])(implicit ev:  H[X, Y] === B) = 1 + a.f.depth
     def apply[Y, Z](a:    Curry[A, Y, Z])(implicit ev:  H[Y, Z] === B) = 1 + a.f.depth
-    def apply[X, Y](a:  Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) = 1 + a.f.depth
+    def apply[X, Y](a:  Uncurry[X, Y, B])(implicit ev: A === (X ** Y)) = 1 + a.f.depth
     def apply[Y, Z](a:     Prod[A, Y, Z])(implicit ev:   (Y**Z) === B) = 1 + math.max(a.f.depth, a.g.depth)
-    def apply[Y]   (a:      Fst[B, Y])   (implicit ev:   (B**Y) === A) = 1
-    def apply[X]   (a:      Snd[X, B])   (implicit ev:   (X**B) === A) = 1
+    def apply[Y]   (a:      Fst[B, Y])   (implicit ev:   A === (B**Y)) = 1
+    def apply[X]   (a:      Snd[X, B])   (implicit ev:   A === (X**B)) = 1
     def apply      (a:       Id[A])      (implicit ev:        A === B) = 1
     def apply      (a: Terminal[A])      (implicit ev:        T === B) = 1
     def apply      (a:     Lift[A, B])                                 = 1
@@ -124,16 +124,16 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
     def apply      (a:    Sequence[A, B]) = a.fs.all(Λ[α, β](_.isPure): :=>: ~~> λ[(χ, υ) => Boolean])
     def apply[X, Y](a:    Const[A, X, Y])(implicit ev:  H[X, Y] === B) = a.f.isPure
     def apply[Y, Z](a:    Curry[A, Y, Z])(implicit ev:  H[Y, Z] === B) = a.f.isPure
-    def apply[X, Y](a:  Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) = a.f.isPure
+    def apply[X, Y](a:  Uncurry[X, Y, B])(implicit ev: A === (X ** Y)) = a.f.isPure
     def apply[Y, Z](a:     Prod[A, Y, Z])(implicit ev:   (Y**Z) === B) = a.f.isPure && a.g.isPure
-    def apply[Y]   (a:         Fst[B, Y])(implicit ev:   (B**Y) === A) = true
-    def apply[X]   (a:         Snd[X, B])(implicit ev:   (X**B) === A) = true
+    def apply[Y]   (a:         Fst[B, Y])(implicit ev:   A === (B**Y)) = true
+    def apply[X]   (a:         Snd[X, B])(implicit ev:   A === (X**B)) = true
     def apply      (a:             Id[A])(implicit ev:        A === B) = true
     def apply      (a:       Terminal[A])(implicit ev:        T === B) = true
     def apply      (a:        Lift[A, B])                              = false
   })
 
-  private implicit class ProductLeibnizOps[X1, X2, Y1, Y2](ev: (X1 ** X2) === (Y1 ** Y2)) {
+  private[FreeCCC] implicit class ProductLeibnizOps[X1, X2, Y1, Y2](ev: (X1 ** X2) === (Y1 ** Y2)) {
     def fst: X1 === Y1 = Leibniz.force[Nothing, Any, X1, Y1]
     def snd: X2 === Y2 = Leibniz.force[Nothing, Any, X2, Y2]
     def swap: (X2 ** X1) === (Y2 ** Y1) = snd lift2[**] fst
@@ -176,8 +176,8 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
     visit(new Visitor[A :=>: B] {
       def apply   (f:     Lift[A, B])                              = f
       def apply   (f:       Id[A]   )(implicit ev:        A === B) = f.castB[B]
-      def apply[X](f:      Fst[B, X])(implicit ev: (B ** X) === A) = f.castA[A]
-      def apply[X](f:      Snd[X, B])(implicit ev: (X ** B) === A) = f.castA[A]
+      def apply[X](f:      Fst[B, X])(implicit ev: A === (B ** X)) = f.castA[A]
+      def apply[X](f:      Snd[X, B])(implicit ev: A === (X ** B)) = f.castA[A]
       def apply   (f: Terminal[A]   )(implicit ev:        T === B) = f.castB[B]
 
       def apply(f: Sequence[A, B]) =
@@ -189,7 +189,7 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
       def apply[X, Y](f: Curry[A, X, Y])(implicit ev:  H[X, Y] === B) =
         Curry(φ.apply(f.f)).castB[B]
 
-      def apply[X, Y](f: Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) =
+      def apply[X, Y](f: Uncurry[X, Y, B])(implicit ev: A === (X ** Y)) =
         Uncurry(φ.apply(f.f)).castA[A]
 
       def apply[X, Y](f: Const[A, X, Y])(implicit ev: H[X, Y] === B) =
@@ -199,8 +199,8 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
   private[FreeCCC] def ignoresFst[A1, A2](implicit ev: A === (A1 ** A2)): Option[A2 :=>: B] =
     visit(new OptVisitor[A2 :=>: B] {
 
-      override def apply[X](f: Snd[X, B])(implicit ev1: (X ** B) === A) =
-        Some(Id[B].castA(f.deriveLeibniz(ev1 andThen ev)))
+      override def apply[X](f: Snd[X, B])(implicit ev1: A === (X ** B)) =
+        Some(Id[B].castA((ev.flip andThen ev1).snd))
 
       override def apply(f: Terminal[A])(implicit ev: T === B) =
         Some(Terminal[A2].castB)
@@ -215,8 +215,8 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
   private[FreeCCC] def ignoresSnd[A1, A2](implicit ev: A === (A1 ** A2)): Option[A1 :=>: B] =
     visit(new OptVisitor[A1 :=>: B] {
 
-      override def apply[Y](f: Fst[B, Y])(implicit ev1: (B ** Y) === A) =
-        Some(Id[B].castA(f.deriveLeibniz(ev1 andThen ev)))
+      override def apply[Y](f: Fst[B, Y])(implicit ev1: A === (B ** Y)) =
+        Some(Id[B].castA((ev.flip andThen ev1).fst))
 
       override def apply(f: Terminal[A])(implicit ev: T === B) =
         Some(Terminal[A1].castB)
@@ -238,16 +238,16 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
       override def apply(f: Terminal[A])(implicit ev: T === B) = Some(ev)
     })
 
-  def isFst: Option[Exists[λ[x => (B ** x) === A]]] =
-    visit(new OptVisitor[Exists[λ[x => (B ** x) === A]]] {
-      override def apply[X](f: Fst[B, X])(implicit ev: (B ** X) === A) =
-        Some(Exists[λ[x => (B ** x) === A], X](ev))
+  def isFst: Option[Exists[λ[x => A === (B ** x)]]] =
+    visit(new OptVisitor[Exists[λ[x => A === (B ** x)]]] {
+      override def apply[X](f: Fst[B, X])(implicit ev: A === (B ** X)) =
+        Some(Exists[λ[x => A === (B ** x)], X](ev))
     })
 
-  def isSnd: Option[Exists[λ[x => (x ** B) === A]]] =
-    visit(new OptVisitor[Exists[λ[x => (x ** B) === A]]] {
-      override def apply[X](f: Snd[X, B])(implicit ev: (X ** B) === A) =
-        Some(Exists[λ[x => (x ** B) === A], X](ev))
+  def isSnd: Option[Exists[λ[x => A === (x ** B)]]] =
+    visit(new OptVisitor[Exists[λ[x => A === (x ** B)]]] {
+      override def apply[X](f: Snd[X, B])(implicit ev: A === (X ** B)) =
+        Some(Exists[λ[x => A === (x ** B)], X](ev))
     })
 
   private[lambdacart] def stripLeadingProjection: APair[Prj[A, ?], ? :=>: B] = {
@@ -261,11 +261,11 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
       override def apply(f: Id[A])(implicit ev: A === B) =
         pair(Prj.Id(), f.castB)
 
-      override def apply[X](f: Fst[B, X])(implicit ev: (B ** X) === A) =
-        pair(Prj.Fst[**, T, B, X].castA, Id[B])
+      override def apply[X](f: Fst[B, X])(implicit ev: A === (B ** X)) =
+        pair(Prj.Fst[**, T, B, X].castA[A], Id[B])
 
-      override def apply[X](f: Snd[X, B])(implicit ev: (X ** B) === A) =
-        pair(Prj.Snd[**, T, X, B].castA, Id[B])
+      override def apply[X](f: Snd[X, B])(implicit ev: A === (X ** B)) =
+        pair(Prj.Snd[**, T, X, B].castA[A], Id[B])
 
       override def apply(f: Terminal[A])(implicit ev: T === B) =
         pair(Prj.Unit(), Id[T].castB)
@@ -302,11 +302,11 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
         // TODO
         pair(Prj.Id(), FreeCCC.this)
       }
-      override def apply[X, Y](f: Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) = {
+      override def apply[X, Y](f: Uncurry[X, Y, B])(implicit ev: A === (X ** Y)) = {
         val pg = f.f.stripLeadingProjection
         val (p, g) = (pg._1, pg._2)
         p.switchTerminal match {
-          case Left(ev1) => pair(Prj.Snd[**, T, X, Y].castA, Prod(Terminal[Y].castB(ev1), Id[Y]) andThen Uncurry(g))
+          case Left(ev1) => pair(Prj.Snd[**, T, X, Y].castA[A], Prod(Terminal[Y].castB(ev1), Id[Y]) andThen Uncurry(g))
           case Right(p) => pair(Prj.par[**, T, X, Y, pg.A, Y](p, Prj.Id()).castA[A], Uncurry(g))
         }
       //  )
@@ -323,8 +323,8 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
 
       def apply      (f:     Lift[A, B]   )                              = pair(FreeCCC.this, FPrj.Id())
       def apply      (f:       Id[A]      )(implicit ev:        A === B) = pair(FreeCCC.this, FPrj.Id())
-      def apply[X]   (f:      Fst[B, X]   )(implicit ev: (B ** X) === A) = pair(FreeCCC.this, FPrj.Id())
-      def apply[X]   (f:      Snd[X, B]   )(implicit ev: (X ** B) === A) = pair(FreeCCC.this, FPrj.Id())
+      def apply[X]   (f:      Fst[B, X]   )(implicit ev: A === (B ** X)) = pair(FreeCCC.this, FPrj.Id())
+      def apply[X]   (f:      Snd[X, B]   )(implicit ev: A === (X ** B)) = pair(FreeCCC.this, FPrj.Id())
       def apply      (f: Terminal[A]      )(implicit ev:        T === B) = pair(FreeCCC.this, FPrj.Id())
       def apply[X, Y](f:     Prod[A, X, Y])(implicit ev: (X ** Y) === B) = {
         val fp1 = f.f.stripTrailingProjection
@@ -372,7 +372,7 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
           }
         }
       }
-      def apply[X, Y](f:  Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) = {
+      def apply[X, Y](f:  Uncurry[X, Y, B])(implicit ev: A === (X ** Y)) = {
         val gq = f.f.stripTrailingProjection
         val (g, q) = (gq._1, gq._2)
         val q012 = q.splitIO[Y, B]
@@ -395,11 +395,11 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
 
       def apply      (f:     Lift[A, B]   )                              = pair(FreeCCC.this, Expansion.Id())
       def apply      (f:       Id[A]      )(implicit ev:        A === B) = pair(FreeCCC.this, Expansion.Id())
-      def apply[X]   (f:      Fst[B, X]   )(implicit ev: (B ** X) === A) = pair(FreeCCC.this, Expansion.Id())
-      def apply[X]   (f:      Snd[X, B]   )(implicit ev: (X ** B) === A) = pair(FreeCCC.this, Expansion.Id())
+      def apply[X]   (f:      Fst[B, X]   )(implicit ev: A === (B ** X)) = pair(FreeCCC.this, Expansion.Id())
+      def apply[X]   (f:      Snd[X, B]   )(implicit ev: A === (X ** B)) = pair(FreeCCC.this, Expansion.Id())
       def apply      (f: Terminal[A]      )(implicit ev:        T === B) = pair(FreeCCC.this, Expansion.Id())
       def apply[X, Y](f:    Curry[A, X, Y])(implicit ev:  H[X, Y] === B) = pair(FreeCCC.this, Expansion.Id())
-      def apply[X, Y](f:  Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) = pair(FreeCCC.this, Expansion.Id())
+      def apply[X, Y](f:  Uncurry[X, Y, B])(implicit ev: A === (X ** Y)) = pair(FreeCCC.this, Expansion.Id())
       def apply[X, Y](f:    Const[A, X, Y])(implicit ev:  H[X, Y] === B) = pair(FreeCCC.this, Expansion.Id())
 
       def apply[X, Y](f:     Prod[A, X, Y])(implicit ev: (X ** Y) === B) =
@@ -451,12 +451,12 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
 
       def apply      (f:     Lift[A, B]   )                              = noShuffle
       def apply      (f:       Id[A]      )(implicit ev:        A === B) = noShuffle
-      def apply[X]   (f:      Fst[B, X]   )(implicit ev: (B ** X) === A) = noShuffle
-      def apply[X]   (f:      Snd[X, B]   )(implicit ev: (X ** B) === A) = noShuffle
+      def apply[X]   (f:      Fst[B, X]   )(implicit ev: A === (B ** X)) = noShuffle
+      def apply[X]   (f:      Snd[X, B]   )(implicit ev: A === (X ** B)) = noShuffle
       def apply      (f: Terminal[A]      )(implicit ev:        T === B) = noShuffle
       def apply[X, Y](f:    Const[A, X, Y])(implicit ev:  H[X, Y] === B) = noShuffle
       def apply[X, Y](f:    Curry[A, X, Y])(implicit ev:  H[X, Y] === B) = noShuffle // TODO
-      def apply[X, Y](f:  Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) = noShuffle // TODO
+      def apply[X, Y](f:  Uncurry[X, Y, B])(implicit ev: A === (X ** Y)) = noShuffle // TODO
       def apply      (f: Sequence[A, B]   )                              = {
         val qt = sequence(f.fs.tail).extractLeadingShuffle
         val (q, t) = (qt._1, qt._2)
@@ -517,15 +517,15 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
 
       def apply(f: Id[A])(implicit ev: A === B) = p.isId match {
         case Some(_) => None
-        case None => Some(p.castA(ev.flip).toFreeCCC)
+        case None => Some(p.castA[A].toFreeCCC)
       }
 
       def apply(f: Terminal[A])(implicit ev: T === B) = None
 
-      def apply[X](f: Fst[B, X])(implicit ev: (B ** X) === A) =
+      def apply[X](f: Fst[B, X])(implicit ev: A === (B ** X)) =
         p.isUnit map { ev1 => Terminal[A].castB(ev1.flip) }
 
-      def apply[X](f: Snd[X, B])(implicit ev: (X ** B) === A) =
+      def apply[X](f: Snd[X, B])(implicit ev: A === (X ** B)) =
         p.isUnit map { ev1 => Terminal[A].castB(ev1.flip) }
 
       def apply(f: Sequence[A, B]) = (for {
@@ -562,7 +562,7 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
             val qh = g.stripLeadingProjection
             val (q, h) = (qh._1, qh._2)
             q.switchTerminal match {
-              case Left(ev1) => improved(Terminal[A].andThen(h.castA(ev1.flip).constA[X]).castB[B])
+              case Left(ev1) => improved(Terminal[A].andThen(h.castA(ev1).constA[X]).castB[B])
               case Right(q) => q.split[A, X] match {
                 case Left3(q1) =>
                   q1.isId match {
@@ -587,7 +587,7 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
       def apply[X, Y](f: Const[A, X, Y])(implicit ev: H[X, Y] === B) =
         p.isUnit map { ev1 => Terminal[A].castB(ev1.flip) }
 
-      def apply[X, Y](f: Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) = {
+      def apply[X, Y](f: Uncurry[X, Y, B])(implicit ev: A === (X ** Y)) = {
         (f.f.restrictResultToI(Prj.Id()) flatMap[A :=>: B] { g =>
           val qh = g.stripLeadingProjection
           val (q, h) = (qh._1, qh._2)
@@ -599,7 +599,7 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
                 Prod(
                   Terminal[Y].castB(ev1) andThen h,
                   Id[Y]
-                ).andThen(FreeCCC.eval).afterPrj(Prj.Snd[**, T, X, Y].castA(ev))
+                ).andThen(FreeCCC.eval).afterPrj(Prj.Snd[**, T, X, Y].castA[A])
               )
             }
           }
@@ -625,19 +625,19 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
             Some(FreeCCC.constA.castB[A].castB[B])
         })
 
-      def apply[X]   (f:      Fst[B, X]   )(implicit ev: (B ** X) === A) = {
-        val p012 = p.rsplit[B, X]
+      def apply[X]   (f:      Fst[B, X]   )(implicit ev: A === (B ** X)) = {
+        val p012 = p.rsplit[B, X](ev.flip)
         val (ev1, (p1, p2)) = (p012._1, p012._2)
         Id[B].strengthenInput(p1) map {
-          g => Fst[p012.A, p012.B].castA(ev1.flip) andThen g
+          g => Fst[p012.A, p012.B].castA(ev1) andThen g
         }
       }
 
-      def apply[X]   (f:      Snd[X, B]   )(implicit ev: (X ** B) === A) = {
-        val p012 = p.rsplit[X, B]
+      def apply[X]   (f:      Snd[X, B]   )(implicit ev: A === (X ** B)) = {
+        val p012 = p.rsplit[X, B](ev.flip)
         val (ev1, (p1, p2)) = (p012._1, p012._2)
         Id[B].strengthenInput(p2) map {
-          g => Snd[p012.A, p012.B].castA(ev1.flip) andThen g
+          g => Snd[p012.A, p012.B].castA(ev1) andThen g
         }
       }
 
@@ -657,8 +657,8 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
 
       def apply[X, Y](f:    Curry[A, X, Y])(implicit ev:  H[X, Y] === B) = None // TODO
 
-      def apply[X, Y](f:  Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) = {
-        val p12 = p.rsplit[X, Y]
+      def apply[X, Y](f:  Uncurry[X, Y, B])(implicit ev: A === (X ** Y)) = {
+        val p12 = p.rsplit[X, Y](ev.flip)
         val (ev1, (p1, p2)) = (p12._1, p12._2)
 
         f.f.strengthenInputI(p1)                          .flatMap[A1 :=>: B] { g1 =>
@@ -668,8 +668,8 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
         val q0io = q.splitIO
         val (q0, (qi, qo)) = (q0io._1, q0io._2)
         qo.isId match {
-          case Some(_) => unchanged(Uncurry(g2).castA(ev1.flip))
-          case None => improved(Uncurry(h andThenFPrj q0.andThen(qi.asStrongerArg[q0io.B])).castA(ev1.flip).andThenFPrj(qo))
+          case Some(_) => unchanged(Uncurry(g2).castA(ev1))
+          case None => improved(Uncurry(h andThenFPrj q0.andThen(qi.asStrongerArg[q0io.B])).castA(ev1).andThenFPrj(qo))
         }
         }}.getImproved
       }
@@ -680,7 +680,7 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
   private[FreeCCC] def strengthenOutputsArgI[B1, B2, B0](p: FPrj[B0, B1])(implicit ev: H[B1, B2] === B): Improvement[A :=>: H[B0, B2]] =
     strengthenOutputsArg(p) match {
       case Some(f) => improved(f)
-      case None    => unchanged(this andThenFPrj p.asStrongerArg[B2].castA[B])
+      case None    => unchanged(this andThenFPrj p.asStrongerArg[B2].castA[B](ev.flip))
     }
 
   private[FreeCCC] def strengthenOutputsArg[B1, B2, B0](p: FPrj[B0, B1])(implicit ev: H[B1, B2] === B): Option[A :=>: H[B0, B2]] = {
@@ -699,11 +699,11 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
       def apply(f: Lift[A, B])                       = None
       def apply(f:   Id[A]   )(implicit ev: A === B) = None
 
-      def apply[C](f: Fst[B, C])(implicit ev: (B ** C) === A) =
+      def apply[C](f: Fst[B, C])(implicit ev: A === (B ** C)) =
         i.visit(new i.Visitor[Option[A0 :=>: B]] {
-          def apply(i: Diag[A0])(implicit ev1: (A0 ** A0) === A) = Some(v.Id[A0].castB(ev1.andThen(ev.flip).fst))
-          def apply(i: UnitR[A0])(implicit ev1: (A0 ** T) === A) = Some(v.Id[A0].castB(ev1.andThen(ev.flip).fst))
-          def apply(i: UnitL[A0])(implicit ev1: (T ** A0) === A) = Some(v.Terminal[A0].castB(ev1.andThen(ev.flip).fst))
+          def apply(i: Diag[A0])(implicit ev1: (A0 ** A0) === A) = Some(v.Id[A0].castB(ev1.andThen(ev).fst))
+          def apply(i: UnitR[A0])(implicit ev1: (A0 ** T) === A) = Some(v.Id[A0].castB(ev1.andThen(ev).fst))
+          def apply(i: UnitL[A0])(implicit ev1: (T ** A0) === A) = Some(v.Terminal[A0].castB(ev1.andThen(ev).fst))
           def apply(i: Id[A0])(implicit ev1: A0 === A) = None
 
           def apply[Q](i: AndThen[A0, Q, A]) = (for {
@@ -712,14 +712,14 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
           } yield f2).getImproved
 
           def apply[X, X1, Y, Y1](i: Par[X, X1, Y, Y1])(implicit ev1: A0 === (X ** Y), ev2: (X1 ** Y1) === A) =
-            Some((v.Fst[X, Y] andThen i.i1.toFreeCCC).castA(ev1.flip).castB(ev2.andThen(ev.flip).fst))
+            Some((v.Fst[X, Y] andThen i.i1.toFreeCCC).castA[A0].castB(ev2.andThen(ev).fst))
         })
 
-      def apply[C](f: Snd[C, B])(implicit ev: (C ** B) === A) =
+      def apply[C](f: Snd[C, B])(implicit ev: A === (C ** B)) =
         i.visit(new i.Visitor[Option[A0 :=>: B]] {
-          def apply(i: Diag[A0])(implicit ev1: (A0 ** A0) === A) = Some(v.Id[A0].castB(ev1.andThen(ev.flip).snd))
-          def apply(i: UnitL[A0])(implicit ev1: (T ** A0) === A) = Some(v.Id[A0].castB(ev1.andThen(ev.flip).snd))
-          def apply(i: UnitR[A0])(implicit ev1: (A0 ** T) === A) = Some(v.Terminal[A0].castB(ev1.andThen(ev.flip).snd))
+          def apply(i: Diag[A0])(implicit ev1: (A0 ** A0) === A) = Some(v.Id[A0].castB(ev1.andThen(ev).snd))
+          def apply(i: UnitL[A0])(implicit ev1: (T ** A0) === A) = Some(v.Id[A0].castB(ev1.andThen(ev).snd))
+          def apply(i: UnitR[A0])(implicit ev1: (A0 ** T) === A) = Some(v.Terminal[A0].castB(ev1.andThen(ev).snd))
           def apply(i: Id[A0])(implicit ev1: A0 === A) = None
 
           def apply[Q](i: AndThen[A0, Q, A]) = (for {
@@ -728,7 +728,7 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
           } yield f2).getImproved
 
           def apply[X, X1, Y, Y1](i: Par[X, X1, Y, Y1])(implicit ev1: A0 === (X ** Y), ev2: (X1 ** Y1) === A) =
-            Some((v.Snd[X, Y] andThen i.i2.toFreeCCC).castA(ev1.flip).castB(ev2.andThen(ev.flip).snd))
+            Some((v.Snd[X, Y] andThen i.i2.toFreeCCC).castA[A0].castB(ev2.andThen(ev).snd))
         })
 
       def apply(f: Terminal[A])(implicit ev: T === B) = i.isId match {
@@ -757,8 +757,8 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
 
       def apply[X, Y](f: Curry[A, X, Y])(implicit ev:  H[X, Y] === B) = None // TODO
 
-      def apply[X, Y](f: Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) = {
-        val i012 = i.rsplit[X, Y]
+      def apply[X, Y](f: Uncurry[X, Y, B])(implicit ev: A === (X ** Y)) = {
+        val i012 = i.rsplit[X, Y](ev.flip)
         val (i0, (i1, i2)) = (i012._1, i012._2)
         f.f.deferExpansion(i1) map {
           (g: i012.A :=>: H[Y, B]) => Uncurry(g) afterExpansion i0.andThen(Expansion.par(Expansion.Id(), i2))
@@ -778,13 +778,13 @@ sealed abstract class FreeCCC[:->:[_, _], **[_, _], T, H[_, _], A, B] { self =>
       def apply      (f:     Lift[A, B]   )                              = None
       def apply      (f:       Id[A]      )(implicit ev:        A === B) = s.isId match {
         case Some(_) => None
-        case None    => Some(s.toFreeCCC[:->:, T, H].castA(ev.flip))
+        case None    => Some(s.toFreeCCC[:->:, T, H].castA)
       }
-      def apply[X]   (f:      Fst[B, X]   )(implicit ev: (B ** X) === A) = None
-      def apply[X]   (f:      Snd[X, B]   )(implicit ev: (X ** B) === A) = None
+      def apply[X]   (f:      Fst[B, X]   )(implicit ev: A === (B ** X)) = None
+      def apply[X]   (f:      Snd[X, B]   )(implicit ev: A === (X ** B)) = None
       def apply      (f: Terminal[A]      )(implicit ev:        T === B) = None
       def apply[X, Y](f:    Curry[A, X, Y])(implicit ev:  H[X, Y] === B) = None // TODO
-      def apply[X, Y](f:  Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) = None // TODO
+      def apply[X, Y](f:  Uncurry[X, Y, B])(implicit ev: A === (X ** Y)) = None // TODO
       def apply[X, Y](f:    Const[A, X, Y])(implicit ev:  H[X, Y] === B) = None // TODO
 
       def apply      (f: Sequence[A, B]   )                              =
@@ -946,12 +946,12 @@ object FreeCCC {
     def apply      (f:     Lift[A, B]   )                              : R
     def apply      (f: Sequence[A, B]   )                              : R
     def apply      (f:       Id[A]      )(implicit ev:        A === B) : R
-    def apply[X]   (f:      Fst[B, X]   )(implicit ev: (B ** X) === A) : R
-    def apply[X]   (f:      Snd[X, B]   )(implicit ev: (X ** B) === A) : R
+    def apply[X]   (f:      Fst[B, X]   )(implicit ev: A === (B ** X)) : R
+    def apply[X]   (f:      Snd[X, B]   )(implicit ev: A === (X ** B)) : R
     def apply[X, Y](f:     Prod[A, X, Y])(implicit ev: (X ** Y) === B) : R
     def apply      (f: Terminal[A]      )(implicit ev:        T === B) : R
     def apply[X, Y](f:    Curry[A, X, Y])(implicit ev:  H[X, Y] === B) : R
-    def apply[X, Y](f:  Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) : R
+    def apply[X, Y](f:  Uncurry[X, Y, B])(implicit ev: A === (X ** Y)) : R
     def apply[X, Y](f:    Const[A, X, Y])(implicit ev:  H[X, Y] === B) : R
   }
 
@@ -960,12 +960,12 @@ object FreeCCC {
     def apply      (f:     Lift[A, B]   )                              = Option.empty[R]
     def apply      (f: Sequence[A, B]   )                              = Option.empty[R]
     def apply      (f:       Id[A]      )(implicit ev:        A === B) = Option.empty[R]
-    def apply[X]   (f:      Fst[B, X]   )(implicit ev: (B ** X) === A) = Option.empty[R]
-    def apply[X]   (f:      Snd[X, B]   )(implicit ev: (X ** B) === A) = Option.empty[R]
+    def apply[X]   (f:      Fst[B, X]   )(implicit ev: A === (B ** X)) = Option.empty[R]
+    def apply[X]   (f:      Snd[X, B]   )(implicit ev: A === (X ** B)) = Option.empty[R]
     def apply[X, Y](f:     Prod[A, X, Y])(implicit ev: (X ** Y) === B) = Option.empty[R]
     def apply      (f: Terminal[A]      )(implicit ev:        T === B) = Option.empty[R]
     def apply[X, Y](f:    Curry[A, X, Y])(implicit ev:  H[X, Y] === B) = Option.empty[R]
-    def apply[X, Y](f:  Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) = Option.empty[R]
+    def apply[X, Y](f:  Uncurry[X, Y, B])(implicit ev: A === (X ** Y)) = Option.empty[R]
     def apply[X, Y](f:    Const[A, X, Y])(implicit ev:  H[X, Y] === B) = Option.empty[R]
   }
 
@@ -1045,12 +1045,12 @@ object FreeCCC {
     def caseOpaque        (f: A :->: B           )                               : R
     def caseSequence      (f: AList1[F, A, B]    )                               : R
     def caseId                                     (implicit ev:        A === B) : R
-    def caseFst[X]                                 (implicit ev: (B ** X) === A) : R
-    def caseSnd[X]                                 (implicit ev: (X ** B) === A) : R
+    def caseFst[X]                                 (implicit ev: A === (B ** X)) : R
+    def caseSnd[X]                                 (implicit ev: A === (X ** B)) : R
     def caseProd[X, Y]    (f: F[A, X], g: F[A, Y]) (implicit ev: (X ** Y) === B) : R
     def caseTerminal                               (implicit ev:        T === B) : R
     def caseCurry[X, Y]   (f: F[A ** X, Y])        (implicit ev:  H[X, Y] === B) : R
-    def caseUncurry[X, Y] (f: F[X, H[Y, B]])       (implicit ev: (X ** Y) === A) : R
+    def caseUncurry[X, Y] (f: F[X, H[Y, B]])       (implicit ev: A === (X ** Y)) : R
     def caseConst[X, Y]   (f: F[X, Y])             (implicit ev:  H[X, Y] === B) : R
   }
 
@@ -1060,20 +1060,19 @@ object FreeCCC {
     def apply      (f:     Lift[A, B]   )                              = h.caseOpaque(f.f)
     def apply      (f: Sequence[A, B]   )                              = h.caseSequence(f.fs)
     def apply      (f:       Id[A]      )(implicit ev:        A === B) = h.caseId
-    def apply[X]   (f:      Fst[B, X]   )(implicit ev: (B ** X) === A) = h.caseFst
-    def apply[X]   (f:      Snd[X, B]   )(implicit ev: (X ** B) === A) = h.caseSnd
+    def apply[X]   (f:      Fst[B, X]   )(implicit ev: A === (B ** X)) = h.caseFst
+    def apply[X]   (f:      Snd[X, B]   )(implicit ev: A === (X ** B)) = h.caseSnd
     def apply[X, Y](f:     Prod[A, X, Y])(implicit ev: (X ** Y) === B) = h.caseProd(f.f, f.g)
     def apply      (f: Terminal[A]      )(implicit ev:        T === B) = h.caseTerminal
     def apply[X, Y](f:    Curry[A, X, Y])(implicit ev:  H[X, Y] === B) = h.caseCurry(f.f)
-    def apply[X, Y](f:  Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) = h.caseUncurry(f.f)
+    def apply[X, Y](f:  Uncurry[X, Y, B])(implicit ev: A === (X ** Y)) = h.caseUncurry(f.f)
     def apply[X, Y](f:    Const[A, X, Y])(implicit ev:  H[X, Y] === B) = h.caseConst(f.f)
   }
 
-  def termHandlerUniversality[:->:[_,_], **[_,_], T, H[_,_]]:
-    UniversalHandler[
-      CCCTermHandler[FreeCCC[:->:, **, T, H, ?, ?], :->:, **, T, H, ?, ?, ?],
-      FreeCCC[:->:, **, T, H, ?, ?]
-    ] =
+  def termHandlerUniversality[:->:[_,_], **[_,_], T, H[_,_]]: UniversalHandler[
+    CCCTermHandler[FreeCCC[:->:, **, T, H, ?, ?], :->:, **, T, H, ?, ?, ?],
+    FreeCCC[:->:, **, T, H, ?, ?]
+  ] =
     new UniversalHandler[
       CCCTermHandler[FreeCCC[:->:, **, T, H, ?, ?], :->:, **, T, H, ?, ?, ?],
       FreeCCC[:->:, **, T, H, ?, ?]
@@ -1095,7 +1094,7 @@ object FreeCCC {
 
     def visit[R](v: Visitor[R]): R
 
-    def castA[C](implicit ev: A === C): Prj[**, T, C, B] = ev.subst[Prj[**, T, ?, B]](this)
+    def castA[C](implicit ev: C === A): Prj[**, T, C, B] = ev.flip.subst[Prj[**, T, ?, B]](this)
     def castB[C](implicit ev: B === C): Prj[**, T, A, C] = ev.subst[Prj[**, T, A, ?]](this)
 
     def unital(implicit ev: A === T): B === T
@@ -1115,8 +1114,8 @@ object FreeCCC {
 
     def isUnit: Option[B === T] = None
     def isId: Option[A === B] = None
-    def isFst[X, Y](implicit ev: A === (X ** Y)): Option[B === X] = None
-    def isSnd[X, Y](implicit ev: A === (X ** Y)): Option[B === Y] = None
+    def isFst[X, Y](implicit ev: A === (X ** Y)): Option[X === B] = None
+    def isSnd[X, Y](implicit ev: A === (X ** Y)): Option[Y === B] = None
 
     def size: Int = visit(new Visitor[Int] {
       def apply[Y](p: Fst[B, Y])(implicit ev: A === (B ** Y)) = 1
@@ -1129,10 +1128,10 @@ object FreeCCC {
 
     def toFreeCCC[:=>:[_,_], :->:[_,_]]: FreeCCC[:=>:, **, T, :->:, A, B] =
       visit(new Visitor[FreeCCC[:=>:, **, T, :->:, A, B]] {
-        def apply[Y](p: Fst[B, Y])(implicit ev: A === (B ** Y)) = FreeCCC.fst[:=>:, **, T, :->:, B, Y].castA(ev.flip)
-        def apply[X](p: Snd[X, B])(implicit ev: A === (X ** B)) = FreeCCC.snd[:=>:, **, T, :->:, X, B].castA(ev.flip)
+        def apply[Y](p: Fst[B, Y])(implicit ev: A === (B ** Y)) = FreeCCC.fst[:=>:, **, T, :->:, B, Y].castA
+        def apply[X](p: Snd[X, B])(implicit ev: A === (X ** B)) = FreeCCC.snd[:=>:, **, T, :->:, X, B].castA
         def apply[A1, A2, B1, B2](p: Par[A1, A2, B1, B2])(implicit ev1: A === (A1 ** A2), ev2: (B1 ** B2) === B) =
-          FreeCCC.parallel(p.p1.toFreeCCC[:=>:, :->:], p.p2.toFreeCCC[:=>:, :->:]).castA(ev1.flip).castB
+          FreeCCC.parallel(p.p1.toFreeCCC[:=>:, :->:], p.p2.toFreeCCC[:=>:, :->:]).castA[A].castB
         def apply(p: Unit[A])(implicit ev: T === B) = FreeCCC.terminal[:=>:, **, T, :->:, A].castB
         def apply(p: Id[A])(implicit ev: A === B) = FreeCCC.id[:=>:, **, T, :->:, A].castB
         def apply[X](p: AndThen[A, X, B]) = FreeCCC.andThen(p.p.toFreeCCC, p.q.toFreeCCC)
@@ -1149,13 +1148,13 @@ object FreeCCC {
           gcdRet(r._1, r._2._1, r._2._2)
       }
 
-    def ignoresSnd[X, Y](implicit ev: A === (X ** Y)): Option[Prj[**, T, X, B]] = {
+    def ignoresSnd[X, Y](implicit ev: (X ** Y) === A): Option[Prj[**, T, X, B]] = {
       val gcd = this.castA(ev) gcd Prj.Fst[**, T, X, Y]
       val (common, (rest, _)) = (gcd._1, gcd._2)
       common.isFst[X, Y] map (ev1 => rest.castA(ev1))
     }
 
-    def ignoresFst[X, Y](implicit ev: A === (X ** Y)): Option[Prj[**, T, Y, B]] = {
+    def ignoresFst[X, Y](implicit ev: (X ** Y) === A): Option[Prj[**, T, Y, B]] = {
       val gcd = this.castA(ev) gcd Prj.Snd[**, T, X, Y]
       val (common, (rest, _)) = (gcd._1, gcd._2)
       common.isSnd[X, Y] map (ev1 => rest.castA(ev1))
@@ -1177,7 +1176,7 @@ object FreeCCC {
     sealed trait NonTerminal[**[_,_], T, A, B] extends Prj[**, T, A, B] {
       def andThenNT[C](that: NonTerminal[**, T, B, C]): NonTerminal[**, T, A, C] =
         (this.isId map {
-          ev => that.castA(ev.flip)
+          ev => that.castA(ev)
         }) orElse (that.isId map {
           ev => this.castB(ev)
         }) orElse this.visit(new this.OptVisitor[NonTerminal[**, T, A, C]] {
@@ -1185,9 +1184,9 @@ object FreeCCC {
           override def apply[A1, A2, B1, B2](p: Par[A1, A2, B1, B2])(implicit
               ev1: A === (A1 ** A2), ev2: (B1 ** B2) === B) =
             (that.isFst[B1, B2](ev2.flip) map {
-              ev => (Fst[A1, A2] andThenNT p.p1).castA(ev1.flip).castB(ev.flip)
+              ev => (Fst[A1, A2] andThenNT p.p1).castA(ev1).castB(ev)
             }) orElse (that.isSnd[B1, B2](ev2.flip) map {
-              ev => (Snd[A1, A2] andThenNT p.p2).castA(ev1.flip).castB(ev.flip)
+              ev => (Snd[A1, A2] andThenNT p.p2).castA(ev1).castB(ev)
             })
         }) getOrElse (
           Prj.AndThen(this, that)
@@ -1224,10 +1223,10 @@ object FreeCCC {
                       def apply[U](q: AndThen[X, U, qs.Joint]) = go(ps, q.p :: q.q :: qt)
                       def apply[V](q: Fst[qs.Joint, V])(implicit ev: X === (qs.Joint ** V)) = {
                         val r = go[qs.Joint, Y, Z](pt, qt) // compiler bug that this passes without casting pt
-                        ret(Fst[qs.Joint, V].castA(ev.flip) andThenNT r._1, r._2._1, r._2._2)
+                        ret(Fst[qs.Joint, V].castA[X] andThenNT r._1, r._2._1, r._2._2)
                       }
                       def apply[U](q: Snd[U, qs.Joint])(implicit ev1: X === (U ** qs.Joint)) = {
-                        implicit val ev2: (ps.Joint ** qs.Joint) === X = (ev.flip andThen ev1).snd.subst[λ[q => X === (ps.Joint ** q)]](ev).flip
+                        implicit val ev2: X === (ps.Joint ** qs.Joint) = (ev.flip andThen ev1).snd.subst[λ[q => X === (ps.Joint ** q)]](ev)
                         ret[X, Y ** Z, Y, Z](Prj.par(seq(pt), seq(qt)).castA[X], Fst[Y, Z], Snd[Y, Z])
                       }
                       def apply[A1, A2, B1, B2](q: Par[A1, A2, B1, B2])(implicit ev1: X === (A1 ** A2), ev2: (B1 ** B2) === qs.Joint) =
@@ -1239,20 +1238,20 @@ object FreeCCC {
                       def apply(q: Id[X])(implicit ev: X === qs.Joint) = go[X, Y, Z](ps, ev.flip.subst[AList[τ, ?, Z]](qt))
                       def apply[U](q: AndThen[X, U, qs.Joint]) = go(ps, q.p :: q.q :: qt)
                       def apply[V](q: Fst[qs.Joint, V])(implicit ev1: X === (qs.Joint ** V)) = {
-                        implicit val ev2: (qs.Joint ** ps.Joint) === X = (ev1.flip andThen ev).snd.subst[λ[v => X === (qs.Joint ** v)]](ev1).flip
+                        implicit val ev2: X === (qs.Joint ** ps.Joint) = (ev1.flip andThen ev).snd.subst[λ[v => X === (qs.Joint ** v)]](ev1)
                         ret[X, Z ** Y, Y, Z](Prj.par(seq(qt), seq(pt)).castA[X], Snd[Z, Y], Fst[Z, Y])
                       }
                       def apply[U](q: Snd[U, qs.Joint])(implicit ev: X === (U ** qs.Joint)) = {
                         val r = go[qs.Joint, Y, Z](pt, qt) // compiler bug that this passes without casting pt
-                        ret(Snd[U, qs.Joint].castA(ev.flip) andThenNT r._1, r._2._1, r._2._2)
+                        ret(Snd[U, qs.Joint].castA[X] andThenNT r._1, r._2._1, r._2._2)
                       }
                       def apply[A1, A2, B1, B2](q: Par[A1, A2, B1, B2])(implicit ev1: X === (A1 ** A2), ev2: (B1 ** B2) === qs.Joint) =
                         flipRet(go(qs, ps))
                     })
                   def apply[A1, A2, B1, B2](p: Par[A1, A2, B1, B2])(implicit ev1: X === (A1 ** A2), ev2: (B1 ** B2) === ps.Joint) =
                     seq(pt).split[B1, B2](ev2.flip) match {
-                      case Left3(pt1)  => go(Fst[A1, A2].castA(ev1.flip) :: p.p1 :: AList(pt1), qs)
-                      case Right3(pt2) => go(Snd[A1, A2].castA(ev1.flip) :: p.p2 :: AList(pt2), qs)
+                      case Left3(pt1)  => go(Fst[A1, A2].castA[X] :: p.p1 :: AList(pt1), qs)
+                      case Right3(pt2) => go(Snd[A1, A2].castA[X] :: p.p2 :: AList(pt2), qs)
                       case Middle3(pt12) =>
                         val ((pt1, pt2), ev3) = (pt12._1, pt12._2)
                         val p1 = p.p1 andThenNT pt1
@@ -1262,28 +1261,28 @@ object FreeCCC {
                           def apply(q: Id[X])(implicit ev: X === qs.Joint) = go[X, Y, Z](ps, ev.flip.subst[AList[τ, ?, Z]](qt))
                           def apply[U](q: AndThen[X, U, qs.Joint]) = go(ps, q.p :: q.q :: qt)
                           def apply[V](q: Fst[qs.Joint, V])(implicit ev: X === (qs.Joint ** V)) = {
-                            val r1pq = p1 gcdNT seq(qt).castA[A1](ev.flip.andThen(ev1).fst)
+                            val r1pq = p1 gcdNT seq(qt).castA[A1](ev1.flip.andThen(ev).fst)
                             val (r1, (r1p, r1q)) = (r1pq._1, r1pq._2)
-                            ret(Prj.par(r1, p2).castA(ev1.flip), Prj.par(r1p, Id[pt12.B]).castB(ev3), Fst[r1pq.A, pt12.B] andThenNT r1q)
+                            ret(Prj.par(r1, p2).castA(ev1), Prj.par(r1p, Id[pt12.B]).castB(ev3), Fst[r1pq.A, pt12.B] andThenNT r1q)
                           }
                           def apply[U](q: Snd[U, qs.Joint])(implicit ev: X === (U ** qs.Joint)) = {
-                            val r2pq = p2 gcdNT seq(qt).castA[A2](ev.flip.andThen(ev1).snd)
+                            val r2pq = p2 gcdNT seq(qt).castA[A2](ev1.flip.andThen(ev).snd)
                             val (r2, (r2p, r2q)) = (r2pq._1, r2pq._2)
-                            ret(Prj.par(p1, r2).castA(ev1.flip), Prj.par(Id[pt12.A], r2p).castB(ev3), Snd[pt12.A, r2pq.A] andThenNT r2q)
+                            ret(Prj.par(p1, r2).castA(ev1), Prj.par(Id[pt12.A], r2p).castB(ev3), Snd[pt12.A, r2pq.A] andThenNT r2q)
                           }
                           def apply[C1, C2, D1, D2](q: Par[C1, C2, D1, D2])(implicit ev4: X === (C1 ** C2), ev5: (D1 ** D2) === qs.Joint) =
                             seq(qt).split[D1, D2](ev5.flip) match {
-                              case Left3(qt1)  => go(ps, Fst[C1, C2].castA(ev4.flip) :: q.p1 :: AList(qt1))
-                              case Right3(qt2) => go(ps, Snd[C1, C2].castA(ev4.flip) :: q.p2 :: AList(qt2))
+                              case Left3(qt1)  => go(ps, Fst[C1, C2].castA(ev4) :: q.p1 :: AList(qt1))
+                              case Right3(qt2) => go(ps, Snd[C1, C2].castA(ev4) :: q.p2 :: AList(qt2))
                               case Middle3(qt12) =>
                                 val ((qt1, qt2), ev6) = (qt12._1, qt12._2)
                                 val q1 = q.p1 andThenNT qt1
                                 val q2 = q.p2 andThenNT qt2
-                                val r1pq = p1 gcdNT q1.castA[A1](ev4.flip.andThen(ev1).fst)
-                                val r2pq = p2 gcdNT q2.castA[A2](ev4.flip.andThen(ev1).snd)
+                                val r1pq = p1 gcdNT q1.castA[A1](ev1.flip.andThen(ev4).fst)
+                                val r2pq = p2 gcdNT q2.castA[A2](ev1.flip.andThen(ev4).snd)
                                 val (r1, (r1p, r1q)) = (r1pq._1, r1pq._2)
                                 val (r2, (r2p, r2q)) = (r2pq._1, r2pq._2)
-                                ret(Prj.par(r1, r2).castA(ev1.flip), Prj.par(r1p, r2p).castB(ev3), Prj.par(r1q, r2q).castB(ev6))
+                                ret(Prj.par(r1, r2).castA(ev1), Prj.par(r1p, r2p).castB(ev3), Prj.par(r1q, r2q).castB(ev6))
                             }
                         })
                     }
@@ -1308,8 +1307,8 @@ object FreeCCC {
 
       def switchTerminal: (T === B) Either NonTerminal[**, T, A, B] = Right(this)
 
-      override def castA[A0](implicit ev: A === A0): NonTerminal[**, T, A0, B] =
-        ev.subst[NonTerminal[**, T, ?, B]](this)
+      override def castA[A0](implicit ev: A0 === A): NonTerminal[**, T, A0, B] =
+        ev.flip.subst[NonTerminal[**, T, ?, B]](this)
 
       override def castB[B1](implicit ev: B === B1): NonTerminal[**, T, A, B1] =
         ev.subst[NonTerminal[**, T, A, ?]](this)
@@ -1358,8 +1357,8 @@ object FreeCCC {
       def unital(implicit ev: (A ** B) === T): A === T =
         sys.error("impossible")
 
-      override def isFst[X, Y](implicit ev: (A ** B) === (X ** Y)): Option[A === X] =
-        Some(ev.fst)
+      override def isFst[X, Y](implicit ev: (A ** B) === (X ** Y)): Option[X === A] =
+        Some(ev.fst.flip)
 
       def split[A1, A2](implicit ev: (A ** B) === (A1 ** A2)) =
         Left3(Id().castB(ev.fst.flip))
@@ -1377,8 +1376,8 @@ object FreeCCC {
       def unital(implicit ev: (A ** B) === T): B === T =
         sys.error("impossible")
 
-      override def isSnd[X, Y](implicit ev: (A ** B) === (X ** Y)): Option[B === Y] =
-        Some(ev.snd)
+      override def isSnd[X, Y](implicit ev: (A ** B) === (X ** Y)): Option[Y === B] =
+        Some(ev.snd.flip)
 
       def split[A1, A2](implicit ev: (A ** B) === (A1 ** A2)) =
         Right3(Id().castB(ev.snd.flip))
@@ -1394,7 +1393,7 @@ object FreeCCC {
         sys.error("impossible")
 
       def split[X1, X2](implicit ev: (A1 ** A2) === (X1 ** X2)) =
-        Middle3(splitRet(p1.castA(ev.fst), p2.castA(ev.snd)))
+        Middle3(splitRet(p1.castA(ev.fst.flip), p2.castA(ev.snd.flip)))
 
       def toShuffle: Either[(A1 ** A2) === (B1 ** B2), Exists[λ[y => Shuffle[**, A1 ** A2, (B1 ** B2) ** y]]]] =
         (p1.toShuffle, p2.toShuffle) match {
@@ -1459,7 +1458,7 @@ object FreeCCC {
           case Right3(p) => Right3(AndThen(p, q))
           case Middle3(p12) =>
             val ((p1, p2), ev) = (p12._1, p12._2)
-            q.castA(ev.flip).split[p12.A, p12.B] match {
+            q.castA(ev).split[p12.A, p12.B] match {
               case Left3(q) => Left3(AndThen(p1, q))
               case Right3(q) => Right3(AndThen(p2, q))
               case Middle3(q12) => Middle3(splitRet(AndThen(p1, q12._1._1), AndThen(p2, q12._1._2))(q12._2))
@@ -1468,7 +1467,7 @@ object FreeCCC {
 
       def toShuffle: Either[A === C, Exists[λ[y => Shuffle[**, A, C ** y]]]] =
         p.toShuffle match {
-          case Left(ev) => q.castA(ev.flip).toShuffle
+          case Left(ev) => q.castA(ev).toShuffle
           case Right(s) => q.toShuffle match {
             case Left(ev) => Right(ev.subst[λ[α => Exists[λ[y => Shuffle[**, A, α ** y]]]]](s))
             case Right(t) => Right(shuffle[t.A ** s.A](s.value andThen Shuffle.par(t.value, Shuffle.Id()) andThen Shuffle.AssocLR()))
@@ -1537,12 +1536,12 @@ object FreeCCC {
 
     def visit[R](v: Visitor[R]): R
 
-    def castA[E](implicit ev: F === E): π[E, G] = ev.subst[π[?, G]](this)
+    def castA[E](implicit ev: E === F): π[E, G] = ev.flip.subst[π[?, G]](this)
     def castB[H](implicit ev: G === H): π[F, H] = ev.subst[π[F, ?]](this)
 
     def andThen[H](that: π[G, H]): π[F, H] =
       (this.isId map {
-        ev => that.castA(ev.flip)
+        ev => that.castA(ev)
       }) orElse (that.isId map {
         ev => this.castB(ev)
       }) getOrElse (
@@ -1586,15 +1585,15 @@ object FreeCCC {
         def apply[X](p: AndThen[F, X, G]) = FreeCCC.andThen(p.p.toFreeCCC, p.q.toFreeCCC)
         def apply(p: Id[F])(implicit ev: F === G) = FreeCCC.id.castB
         def apply[F1, F2, G1, G2](p: Par[F1, F2, G1, G2])(implicit ev1: F === (F1 ** F2), ev2: (G1 ** G2) === G) =
-          FreeCCC.parallel(p.p1.toFreeCCC[:=>:], p.p2.toFreeCCC[:=>:]).castA(ev1.flip).castB(ev2)
+          FreeCCC.parallel(p.p1.toFreeCCC[:=>:], p.p2.toFreeCCC[:=>:]).castA[F].castB[G]
         def apply[Z](p: ExtraArg[F, Z])(implicit ev: (Z -> F) === G) = FreeCCC.constA.castB
         def apply[X, Y, X1](p: StrongerArg[X, Y, X1])(implicit ev1: F === (X -> Y), ev2: (X1 -> Y) === G) = {
           val f0 = p.p.toFreeCCC[:=>:]
-          curry(parallel(id[:=>:, **, T, ->, X -> Y], f0) andThen eval).castA(ev1.flip).castB(ev2)
+          curry(parallel(id[:=>:, **, T, ->, X -> Y], f0) andThen eval).castA[F].castB[G]
         }
         def apply[X, Y, Y0](p: WeakerRes[X, Y, Y0])(implicit ev1: F === (X -> Y), ev2: (X -> Y0) === G) = {
           val f0 = p.p.toFreeCCC[:=>:]
-          curry(eval[:=>:, **, T, ->, X, Y] andThen f0).castA(ev1.flip).castB(ev2)
+          curry(eval[:=>:, **, T, ->, X, Y] andThen f0).castA[F].castB[G]
         }
       })
 
@@ -1681,7 +1680,7 @@ object FreeCCC {
         splitIORet(ExtraArg[**, T, ->, A, Z].castB(ev.flip), ArgId(), Id())
 
       def takesExtraArg[X, Y](implicit ev: (X -> Y) === (Z -> A)) =
-        Some(Id[**, T, ->, Y]().castA(ev.out))
+        Some(Id[**, T, ->, Y]().castA(ev.out.flip))
     }
     case class StrongerArg[**[_,_], T, ->[_,_], A, B, A1](p: FPrj.ArgPrj[**, T, ->, A1, A]) extends FPrj[**, T, ->, A -> B, A1 -> B] {
       def visit[R](v: Visitor[R]): R = v(this)
@@ -1690,7 +1689,7 @@ object FreeCCC {
         sys.error("Impossible")
 
       def splitIO[X, Y](implicit ev: (X -> Y) === (A1 -> B)) =
-        splitIORet(Id[**, T, ->, A -> B], p.castA(ev.flip.in), Id().castB(ev.flip.out))
+        splitIORet(Id[**, T, ->, A -> B], p.castA(ev.in), Id().castB(ev.flip.out))
 
       def takesExtraArg[X, Y](implicit ev: (X -> Y) === (A1 -> B)) =
         None
@@ -1712,8 +1711,8 @@ object FreeCCC {
       def andThen[B](that: ArgPrj[**, T, ->, A, B]): ArgPrj[**, T, ->, A1, B] =
         ArgAndThen(this, that) // TODO check for identities
 
-      def castA[A0](implicit ev: A1 === A0): ArgPrj[**, T, ->, A0, A] =
-        ev.subst[ArgPrj[**, T, ->, ?, A]](this)
+      def castA[A0](implicit ev: A0 === A1): ArgPrj[**, T, ->, A0, A] =
+        ev.flip.subst[ArgPrj[**, T, ->, ?, A]](this)
 
       def castB[B0](implicit ev: A === B0): ArgPrj[**, T, ->, A1, B0] =
         ev.subst[ArgPrj[**, T, ->, A1, ?]](this)
@@ -1786,7 +1785,7 @@ object FreeCCC {
     protected def rsplitRet[x, y, X, Y](i0: Exp[A, x ** y], i1: Exp[x, X], i2: Exp[y, Y]) =
       A2Pair[λ[(α, β) => Exp[A, α ** β]], λ[(α, β) => (Exp[α, X], Exp[β, Y])], x, y](i0, (i1, i2))
 
-    def castA[A0](implicit ev: A === A0): Expansion[**, U, A0, A1] = ev.subst[Expansion[**, U, ?, A1]](this)
+    def castA[A0](implicit ev: A0 === A): Expansion[**, U, A0, A1] = ev.flip.subst[Expansion[**, U, ?, A1]](this)
     def castB[A2](implicit ev: A1 === A2): Expansion[**, U, A, A2] = ev.subst[Expansion[**, U, A, ?]](this)
     def andThen[A2](that: Expansion[**, U, A1, A2]): Expansion[**, U, A, A2] = Expansion.andThen(this, that)
 
@@ -1872,7 +1871,7 @@ object FreeCCC {
       }
 
     def andThen[**[_,_], U, A, B, C](i: Expansion[**, U, A, B], j: Expansion[**, U, B, C]): Expansion[**, U, A, C] =
-      (i.isId map { ev => j.castA(ev.flip) }) orElse
+      (i.isId map { ev => j.castA(ev) }) orElse
       (j.isId map { ev => i.castB(ev) }) getOrElse
       AndThen(i, j)
   }
@@ -1887,7 +1886,7 @@ object FreeCCC {
     def isId: Option[A1 === A2] = None
     def isSwap: Option[A2Pair[λ[(x, y) => A1 === (x ** y)], λ[(x, y) => (y ** x) === A2]]] = None
 
-    def castA[A0](implicit ev: A1 === A0): Shuffle[**, A0, A2] = ev.subst[Shuffle[**, ?, A2]](this)
+    def castA[A0](implicit ev: A0 === A1): Shuffle[**, A0, A2] = ev.flip.subst[Shuffle[**, ?, A2]](this)
     def castB[A3](implicit ev: A2 === A3): Shuffle[**, A1, A3] = ev.subst[Shuffle[**, A1, ?]](this)
     def andThen[A3](that: Shuffle[**, A2, A3]): Shuffle[**, A1, A3] = Shuffle.andThen(this, that)
 
@@ -1896,13 +1895,13 @@ object FreeCCC {
         def apply(s: Id[A1])(implicit ev: A1 === A2) = FreeCCC.id.castB[A2]
         def apply[X](s: AndThen[A1, X, A2]) = FreeCCC.andThen(s.p.toFreeCCC[:->:, T, H], s.q.toFreeCCC[:->:, T, H])
         def apply[X1, X2, Y1, Y2](s: Par[X1, X2, Y1, Y2])(implicit ev1: A1 === (X1 ** Y1), ev2: (X2 ** Y2) === A2) =
-          FreeCCC.parallel(s.a.toFreeCCC[:->:, T, H], s.b.toFreeCCC[:->:, T, H]).castA(ev1.flip).castB(ev2)
+          FreeCCC.parallel(s.a.toFreeCCC[:->:, T, H], s.b.toFreeCCC[:->:, T, H]).castA[A1].castB[A2]
         def apply[X, Y](s: Swap[X, Y])(implicit ev1: A1 === (X ** Y), ev2: (Y ** X) === A2) =
-          FreeCCC.swap[:->:, **, T, H, X, Y].castA(ev1.flip).castB(ev2)
+          FreeCCC.swap[:->:, **, T, H, X, Y].castA[A1].castB[A2]
         def apply[X, Y, Z](s: AssocLR[X, Y, Z])(implicit ev1: A1 === ((X ** Y) ** Z), ev2: (X ** (Y ** Z)) === A2) =
-          FreeCCC.assocR.castA(ev1.flip).castB(ev2)
+          FreeCCC.assocR.castA[A1].castB[A2]
         def apply[X, Y, Z](s: AssocRL[X, Y, Z])(implicit ev1: A1 === (X ** (Y ** Z)), ev2: ((X ** Y) ** Z) === A2) =
-          FreeCCC.assocL.castA(ev1.flip).castB(ev2)
+          FreeCCC.assocL.castA[A1].castB[A2]
       })
   }
   object Shuffle {
@@ -1917,7 +1916,7 @@ object FreeCCC {
     }
 
     sealed trait ShuffleOp[**[_,_], A1, A2] extends Shuffle[**, A1, A2] {
-      override def castA[A0](implicit ev: A1 === A0): ShuffleOp[**, A0, A2] = ev.subst[ShuffleOp[**, ?, A2]](this)
+      override def castA[A0](implicit ev: A0 === A1): ShuffleOp[**, A0, A2] = ev.flip.subst[ShuffleOp[**, ?, A2]](this)
       override def castB[A3](implicit ev: A2 === A3): ShuffleOp[**, A1, A3] = ev.subst[ShuffleOp[**, A1, ?]](this)
     }
 
@@ -1988,10 +1987,10 @@ object FreeCCC {
     trait GlueVisitor[**[_,_], A, B, R] extends Visitor[**, A, B, R] {
       def caseOp(op: ShuffleOp[**, A, B]): R
 
-      final def apply[A1, B1, A2, B2](s: Par[A1, B1, A2, B2])(implicit ev1: A === (A1 ** A2), ev2: (B1 ** B2) === B) = caseOp(s.castA(ev1.flip).castB(ev2))
-      final def apply[X, Y](s: Swap[X, Y])(implicit ev1: A === (X ** Y), ev2: (Y ** X) === B)                        = caseOp(s.castA(ev1.flip).castB(ev2))
-      final def apply[X, Y, Z](s: AssocLR[X, Y, Z])(implicit ev1: A === ((X ** Y) ** Z), ev2: (X ** (Y ** Z)) === B) = caseOp(s.castA(ev1.flip).castB(ev2))
-      final def apply[X, Y, Z](s: AssocRL[X, Y, Z])(implicit ev1: A === (X ** (Y ** Z)), ev2: ((X ** Y) ** Z) === B) = caseOp(s.castA(ev1.flip).castB(ev2))
+      final def apply[A1, B1, A2, B2](s: Par[A1, B1, A2, B2])(implicit ev1: A === (A1 ** A2), ev2: (B1 ** B2) === B) = caseOp(s.castA(ev1).castB(ev2))
+      final def apply[X, Y](s: Swap[X, Y])(implicit ev1: A === (X ** Y), ev2: (Y ** X) === B)                        = caseOp(s.castA(ev1).castB(ev2))
+      final def apply[X, Y, Z](s: AssocLR[X, Y, Z])(implicit ev1: A === ((X ** Y) ** Z), ev2: (X ** (Y ** Z)) === B) = caseOp(s.castA(ev1).castB(ev2))
+      final def apply[X, Y, Z](s: AssocRL[X, Y, Z])(implicit ev1: A === (X ** (Y ** Z)), ev2: ((X ** Y) ** Z) === B) = caseOp(s.castA(ev1).castB(ev2))
     }
 
     trait OptVisitor[**[_,_], A, B, R] extends Visitor[**, A, B, Option[R]] {
@@ -2012,7 +2011,7 @@ object FreeCCC {
 
     def andThen[**[_,_], A1, A2, A3](thiz: Shuffle[**, A1, A2], that: Shuffle[**, A2, A3]): Shuffle[**, A1, A3] =
       thiz.visit(new thiz.GlueVisitor[Shuffle[**, A1, A3]] {
-        def apply(s: Id[A1])(implicit ev: A1 === A2) = that.castA(ev.flip)
+        def apply(s: Id[A1])(implicit ev: A1 === A2) = that.castA(ev)
         def apply[X](s: AndThen[A1, X, A2]) = andThen(s.p, andThen(s.q, that))
         def caseOp(op1: ShuffleOp[**, A1, A2]) =
           that.visit(new that.GlueVisitor[Option[Shuffle[**, A1, A3]]] {
@@ -2072,7 +2071,7 @@ object FreeCCC {
                 Some(Shuffle.par(
                   s.a.castB(yu.fst) andThen t.a,
                   s.b.castB(yu.snd) andThen t.b
-                ).castA(ev1.flip).castB(ev4))
+                ).castA(ev1).castB(ev4))
               }
             })
         })
@@ -2083,7 +2082,7 @@ object FreeCCC {
             that.visit(new that.OptVisitor[Shuffle[**, A1, A3]] {
               override def apply[U, V](t: Swap[U, V])(implicit ev3: A2 === (U ** V), ev4: (V ** U) === A3) =
                 Some(
-                  Shuffle.Swap[**, X1, X2].castA(ev1.flip) andThen
+                  Shuffle.Swap[**, X1, X2].castA(ev1) andThen
                   Shuffle.par(s.b, s.a).castB[A3]((ev2 andThen ev3).swap andThen ev4)
                 )
             })
@@ -2122,8 +2121,8 @@ object FreeCCC {
                           val vu_sr: (V ** U) === (S ** R)   = ((ev4 andThen ev5).fst andThen ev7).swap
                           val vuw_a4: ((V ** U) ** W) === A4 = ((vu_sr andThen ev8) lift2[**] (ev4 andThen ev5).snd.andThen(ev9)) andThen ev6
                           Some(
-                            AssocLR[**, V, W, U].castA(a1_vwu.flip)  andThen
-                            par(Id[**, V], Swap[**, W, U])           andThen
+                            AssocLR[**, V, W, U].castA(a1_vwu)  andThen
+                            par(Id[**, V], Swap[**, W, U])      andThen
                             AssocRL[**, V, U, W].castB(vuw_a4)
                           )
                         }
@@ -2151,8 +2150,8 @@ object FreeCCC {
                           val wv_sr: (W ** V) === (S ** R)   = ((ev4 andThen ev5).snd andThen ev7).swap
                           val uwv_a4: (U ** (W ** V)) === A4 = ((ev4 andThen ev5).fst.andThen(ev9) lift2[**] (wv_sr andThen ev8)) andThen ev6
                           Some(
-                            AssocRL[**, W, U, V].castA(a1_wuv.flip)  andThen
-                            par(Swap[**, W, U], Id[**, V])           andThen
+                            AssocRL[**, W, U, V].castA(a1_wuv)  andThen
+                            par(Swap[**, W, U], Id[**, V])      andThen
                             AssocLR[**, U, W, V].castB(uwv_a4)
                           )
                         }
@@ -2289,8 +2288,8 @@ object FreeCCC {
       ν[ClosedRewriteRule].rewrite[A, B](f => f.visit(new BinTransformer[:->:, **, T, H, A, B] {
         override def apply   (f:     Lift[A, B])                              = None
         override def apply   (f:       Id[A]   )(implicit ev:        A === B) = None
-        override def apply[X](f:      Fst[B, X])(implicit ev: (B ** X) === A) = None
-        override def apply[X](f:      Snd[X, B])(implicit ev: (X ** B) === A) = None
+        override def apply[X](f:      Fst[B, X])(implicit ev: A === (B ** X)) = None
+        override def apply[X](f:      Snd[X, B])(implicit ev: A === (X ** B)) = None
         override def apply   (f: Terminal[A]   )(implicit ev:        T === B) = None
 
         override def apply[X, Y, Z](f: X :=>: Y, g: Y :=>: Z) = g.visit(new g.OptVisitor[X :=>: Z] {
@@ -2321,9 +2320,10 @@ object FreeCCC {
                 val (g1hh, g1ht) = (g1hs.head, g1hs.tail)
 
                 g1hh.visit(new g1hh.OptVisitor[X :=>: Z] {
-                  override def apply[U](g1hh: Snd[U, g1hs.A1])(implicit ev2: (U ** g1hs.A1) === (Y ** R)) = {
-                    val ev3: g1hs.A1 === R = g1hh.deriveLeibniz(ev2)
-                    Some(Prod(andThen(Curry(andThen(Snd[X, R](), sequence(g1ht).castA(ev3))), sequence(g1t).castA(ev1.flip)), f >>> g.g).castB[Z])
+                  override def apply[U](g1hh: Snd[U, g1hs.A1])(implicit ev2: (Y ** R) === (U ** g1hs.A1)) = {
+                    import g1hh.ProductLeibnizOps
+                    val ev3: R === g1hs.A1 = ev2.snd
+                    Some(Prod(andThen(Curry(andThen(Snd[X, R](), sequence(g1ht).castA(ev3))), sequence(g1t).castA(ev1)), f >>> g.g).castB[Z])
                   }
                 })
               }
@@ -2336,9 +2336,10 @@ object FreeCCC {
                 val (g2hh, g2ht) = (g2hs.head, g2hs.tail)
 
                 g2hh.visit(new g2hh.OptVisitor[X :=>: Z] {
-                  override def apply[U](g2hh: Snd[U, g2hs.A1])(implicit ev2: (U ** g2hs.A1) === (Y ** R)) = {
-                    val ev3: g2hs.A1 === R = g2hh.deriveLeibniz(ev2)
-                    Some(Prod(f >>> g.f, andThen(Curry(andThen(Snd[X, R](), sequence(g2ht).castA(ev3))), sequence(g2t).castA(ev1.flip))).castB[Z])
+                  override def apply[U](g2hh: Snd[U, g2hs.A1])(implicit ev2: (Y ** R) === (U ** g2hs.A1)) = {
+                    import g2hh.ProductLeibnizOps
+                    val ev3: R === g2hs.A1 = ev2.snd
+                    Some(Prod(f >>> g.f, andThen(Curry(andThen(Snd[X, R](), sequence(g2ht).castA(ev3))), sequence(g2t).castA(ev1))).castB[Z])
                   }
                 })
               }
@@ -2351,7 +2352,7 @@ object FreeCCC {
           override def apply(f: Sequence[X, Y]) = Some(Sequence(f.fs :+ g))
 
           // reduce `g . id` to `g`
-          override def apply(f: Id[X])(implicit ev: X === Y) = Some(g.castA(ev.flip))
+          override def apply(f: Id[X])(implicit ev: X === Y) = Some(g.castA)
 
           override def apply[P, Q](p: Prod[X, P, Q])(implicit ev: (P ** Q) === Y) =
             g.ignoresFst[P, Q](ev.flip).map(h => h compose p.g) orElse
@@ -2368,8 +2369,8 @@ object FreeCCC {
               }
 
               // rewrite `prod(e >>> curry(f), g) >>> uncurry(id)` to `prod(e, g) >>> f`
-              override def apply[R, S](g: Uncurry[R, S, Z])(implicit ev1: (R ** S) === Y) = {
-                val g0: Uncurry[P, Q, Z] = g.cast(ev.flip compose ev1)
+              override def apply[R, S](g: Uncurry[R, S, Z])(implicit ev1: Y === (R ** S)) = {
+                val g0: Uncurry[P, Q, Z] = g.cast(ev.andThen(ev1).flip)
                 g0.f.visit(new g0.f.OptVisitor[X :=>: Z] {
                   override def apply(gf: Id[P])(implicit ev2: P === H[Q, Z]) = {
                     val p1 = p.f.asSequence.fs.unsnoc1
@@ -2398,10 +2399,12 @@ object FreeCCC {
         override def apply[X, Y](f: Prod[A, X, Y])(implicit ev: (X ** Y) === B) =
           // reduce `prod(fst, snd)` to identity
           f.f.visit(new f.f.OptVisitor[A :=>: B] {
-            override def apply[P](fst: Fst[X, P])(implicit ev1: (X ** P) === A) =
+            override def apply[P](fst: Fst[X, P])(implicit ev1: A === (X ** P)) =
               f.g.visit(new f.g.OptVisitor[A :=>: B] {
-                override def apply[Q](snd: Snd[Q, Y])(implicit ev2: (Q ** Y) === A) =
-                  Some(id[:->:, **, T, H, A].castB(ev compose snd.deriveLeibniz(ev1.flip.compose(ev2)).flip.lift[X ** ?].subst[? === A](ev1).flip))
+                override def apply[Q](snd: Snd[Q, Y])(implicit ev2: A === (Q ** Y)) = {
+                  import snd.ProductLeibnizOps
+                  Some(id[:->:, **, T, H, A].castB(ev compose (ev1.flip andThen ev2).snd.lift[X ** ?].subst[A === ?](ev1)))
+                }
               })
           }).orElse({
             val fs = f.f.asSequence.fs
@@ -2412,7 +2415,7 @@ object FreeCCC {
             // reduce `prod(fh >>> ft, fh >>> gt)` to `fh >>> prod(ft, gt)`
             (fh termEqual gh) flatMap { (ev1: fs.A1 === gs.A1) => fh match {
               case Id() => None // prevent expanding `prod(id, id)` to `id >>> prod(id, id)`
-              case _    => Some(andThen(fh, Prod(sequence(ft), sequence(gt).castA(ev1.flip))).castB[B])
+              case _    => Some(andThen(fh, Prod(sequence(ft), sequence(gt).castA(ev1))).castB[B])
             }} orElse
             None
 //            //
@@ -2489,11 +2492,11 @@ object FreeCCC {
         override def apply[Y, Z](f: Curry[A, Y, Z])(implicit ev: H[Y, Z] === B) =
           f.f.visit(new f.f.OptVisitor[A :=>: B] {
             // reduce curry(uncurry(f)) to f
-            override def apply[P, Q](g: Uncurry[P, Q, Z])(implicit ev1: (P ** Q) === (A ** Y)) =
-              Some(g.cast(ev1).f.castB[B])
+            override def apply[P, Q](g: Uncurry[P, Q, Z])(implicit ev1: (A ** Y) === (P ** Q)) =
+              Some(g.cast(ev1.flip).f.castB[B])
           })
 
-        override def apply[X, Y](f: Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) = {
+        override def apply[X, Y](f: Uncurry[X, Y, B])(implicit ev: A === (X ** Y)) = {
           // reduce uncurry(g >>> curry(h)) to parallel(g, id) >>> h
           val gh = f.f.asSequence.fs.unsnoc1
           val (g, h) = (sequence(gh._1), gh._2)

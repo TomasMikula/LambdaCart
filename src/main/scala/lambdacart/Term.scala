@@ -140,11 +140,11 @@ final class CodeTerm[A, B](val unwrap: FreeCCC[:⨪>:, **, Unit, Hom, A, B]) {
   def containsVar[V](v: Var[V]): Boolean = visit(new Visitor[Boolean] {
     def caseCurry[Y, Z]  (f: φ[A ** Y, Z]     )(implicit ev: Hom[Y,Z] === B) = f.containsVar(v)
     def caseConst[X, Y]  (f: φ[X, Y]          )(implicit ev: Hom[X,Y] === B) = f.containsVar(v)
-    def caseUncurry[X, Y](f: φ[X, Hom[Y, B]]  )(implicit ev: (X ** Y) === A) = f.containsVar(v)
+    def caseUncurry[X, Y](f: φ[X, Hom[Y, B]]  )(implicit ev: A === (X ** Y)) = f.containsVar(v)
     def caseCompose[Y]   (f: φ[Y,B], g: φ[A,Y])                              = f.containsVar(v) || g.containsVar(v)
     def caseProd[Y, Z]   (f: φ[A,Y], g: φ[A,Z])(implicit ev:   (Y**Z) === B) = f.containsVar(v) || g.containsVar(v)
-    def caseFst[Y]                             (implicit ev:   (B**Y) === A) = false
-    def caseSnd[X]                             (implicit ev:   (X**B) === A) = false
+    def caseFst[Y]                             (implicit ev:   A === (B**Y)) = false
+    def caseSnd[X]                             (implicit ev:   A === (X**B)) = false
     def caseId                                 (implicit ev:        A === B) = false
     def caseTerminal                           (implicit ev:     Unit === B) = false
     def casePrimitive    (f: A :->: B)                                       = false
@@ -157,13 +157,13 @@ final class CodeTerm[A, B](val unwrap: FreeCCC[:⨪>:, **, Unit, Hom, A, B]) {
     def casePrimitive(f: A :->: B) = primitive(f).const[V]
 
     def caseId      (implicit ev:      A === B) = const[V]
-    def caseFst[Y]  (implicit ev: (B**Y) === A) = const[V]
-    def caseSnd[X]  (implicit ev: (X**B) === A) = const[V]
+    def caseFst[Y]  (implicit ev: A === (B**Y)) = const[V]
+    def caseSnd[X]  (implicit ev: A === (X**B)) = const[V]
     def caseTerminal(implicit ev:   Unit === B) = const[V]
 
-    def caseUncurry[X, Y](f: φ[X, Hom[Y, B]])(implicit ev: (X ** Y) === A) =
+    def caseUncurry[X, Y](f: φ[X, Hom[Y, B]])(implicit ev: A === (X ** Y)) =
       if(f.containsVar(v))
-        curry(assocL[V, X, Y] andThen uncurry(uncurry(f.unapply(v)))).castB(ev.lift[Hom[?, B]])
+        curry(assocL[V, X, Y] andThen uncurry(uncurry(f.unapply(v)))).castB(ev.flip.lift[Hom[?, B]])
       else const[V]
 
     def caseCurry[Y, Z](f: φ[A ** Y, Z])(implicit ev: Hom[Y, Z] === B) =
@@ -290,11 +290,11 @@ object CodeTerm {
     def caseCompose[X]   (f: φ[X, B], g: φ[A, X])                              : R
     def caseId                                   (implicit ev:        A === B) : R
     def caseProd   [X, Y](f: φ[A, X], g: φ[A, Y])(implicit ev: (X ** Y) === B) : R
-    def caseFst    [X]                           (implicit ev: (B ** X) === A) : R
-    def caseSnd    [X]                           (implicit ev: (X ** B) === A) : R
+    def caseFst    [X]                           (implicit ev: A === (B ** X)) : R
+    def caseSnd    [X]                           (implicit ev: A === (X ** B)) : R
     def caseTerminal                             (implicit ev:     Unit === B) : R
     def caseCurry  [X, Y](f: φ[(A**X), Y])       (implicit ev: Hom[X,Y] === B) : R
-    def caseUncurry[X, Y](f: φ[X, Hom[Y, B]])    (implicit ev: (X ** Y) === A) : R
+    def caseUncurry[X, Y](f: φ[X, Hom[Y, B]])    (implicit ev: A === (X ** Y)) : R
     def caseConst  [X, Y](f: φ[X, Y])            (implicit ev: Hom[X,Y] === B) : R
 
     final override def apply(f: Sequence[A, B]) = f.fs.tail match {
@@ -306,12 +306,12 @@ object CodeTerm {
     }
 
     final override def apply      (f: Id[A]           )(implicit ev:        A === B) = caseId
-    final override def apply[X]   (f: Fst[B, X]       )(implicit ev: (B ** X) === A) = caseFst
-    final override def apply[X]   (f: Snd[X, B]       )(implicit ev: (X ** B) === A) = caseSnd
+    final override def apply[X]   (f: Fst[B, X]       )(implicit ev: A === (B ** X)) = caseFst
+    final override def apply[X]   (f: Snd[X, B]       )(implicit ev: A === (X ** B)) = caseSnd
     final override def apply[X, Y](f: Prod[A, X, Y]   )(implicit ev: (X ** Y) === B) = caseProd(wrap(f.f), wrap(f.g))
     final override def apply      (f: Terminal[A]     )(implicit ev:     Unit === B) = caseTerminal
     final override def apply[X, Y](f: Curry[A, X, Y]  )(implicit ev: Hom[X,Y] === B) = caseCurry(wrap(f.f))
-    final override def apply[X, Y](f: Uncurry[X, Y, B])(implicit ev: (X ** Y) === A) = caseUncurry(wrap(f.f))
+    final override def apply[X, Y](f: Uncurry[X, Y, B])(implicit ev: A === (X ** Y)) = caseUncurry(wrap(f.f))
     final override def apply[X, Y](f: Const[A, X, Y]  )(implicit ev: Hom[X,Y] === B) = caseConst(wrap(f.f))
     final override def apply      (f: Lift[A, B]) =
       f.f match {
