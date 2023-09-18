@@ -1,4 +1,7 @@
 # LambdaCart
+
+**This library has been superseded by [Libretto Lambda](https://github.com/TomasMikula/libretto/tree/main/lambda).**
+
 Lambda syntax for Scala EDSLs
 
 
